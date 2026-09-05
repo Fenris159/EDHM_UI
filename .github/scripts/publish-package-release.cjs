@@ -5,7 +5,7 @@ const { execFileSync } = require('node:child_process');
 function publishRelease(directory, env = process.env, gh = (...args) => execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })) {
   directory = path.resolve(directory);
   const variant = env.INSTALLER_VARIANT;
-  if (!['free', 'advanced-installer'].includes(variant)) throw new Error('Invalid installer variant');
+  if (!['free', 'velopack'].includes(variant)) throw new Error('Invalid installer variant');
   if (env.GITHUB_REPOSITORY !== 'Fenris159/EDHM_UI') throw new Error('Release workflow testing is restricted to the fork');
   const metadata = JSON.parse(fs.readFileSync(path.join(directory, 'release-metadata.json'), 'utf8'));
   if (metadata.uiCommit !== env.GITHUB_SHA) throw new Error('Release metadata belongs to another app commit');

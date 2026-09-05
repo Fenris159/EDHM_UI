@@ -1,15 +1,25 @@
-name: Package release (Advanced Installer)
+name: Package release (Velopack)
 
 on:
   push:
     branches: [codex/release-workflow-test]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a normal GitHub release after validation (off = build artifacts only)
+        type: boolean
+        default: false
+
+# Set once in Settings > Secrets and variables > Actions > Variables.
+# This must match the package ID in the maintainer's existing Velopack build.
+env:
+  VELOPACK_PACK_ID: ${{ vars.VELOPACK_PACK_ID }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: package-release-advanced-installer-${{ github.ref }}
+  group: package-release-velopack-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +28,6 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.version.outputs.version }}
-      licensed: ${{ steps.license.outputs.available }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -38,22 +47,18 @@ jobs:
           path: source_v3/out/release/notes/*
           if-no-files-found: error
           retention-days: 14
-      - name: Check license availability
-        id: license
-        env:
-          ADVINST_LICENSE_KEY: ${{ secrets.ADVINST_LICENSE_KEY }}
+      - name: Validate Velopack package identity
+        shell: pwsh
         run: |
-          if [[ -n "$ADVINST_LICENSE_KEY" ]]; then
-            echo 'available=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'available=false' >> "$GITHUB_OUTPUT"
-            echo '## Build skipped: no Advanced Installer license' >> "$GITHUB_STEP_SUMMARY"
-            echo 'Set the ADVINST_LICENSE_KEY repository Actions secret, then rerun this workflow. No installer was built or tested by this run.' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          if ($env:VELOPACK_PACK_ID -notmatch '^[A-Za-z][A-Za-z0-9.-]{2,79}$') {
+            throw 'Set the VELOPACK_PACK_ID repository Actions variable to the existing Velopack package ID. See .github/RELEASE-PACKAGING.md.'
+          }
+          if ('${{ inputs.publish_release }}' -eq 'true' -and $env:VELOPACK_PACK_ID -eq 'Fenris.EDHMUI.PackagingTest') {
+            throw 'The fork test package ID is for build-only testing. Configure the real package ID before publishing.'
+          }
 
   windows:
     needs: metadata
-    if: needs.metadata.outputs.licensed == 'true'
     runs-on: windows-2022
     timeout-minutes: 45
     defaults:
@@ -72,18 +77,50 @@ jobs:
         run: node --test tests/*.test.cjs
       - name: Package Windows application
         run: npm run package -- --arch=x64
-      - name: Set up Advanced Installer
-        uses: Caphyon/advinst-github-action@7edde34c6ff935e53e3de72a5699efcfceb5f6c6
+      - name: Verify packaged startup and dependencies
+        run: node ../.github/scripts/check-packaged-app.cjs
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          advinst-version: ${{ vars.ADVINST_VERSION || '22.0' }}
-          advinst-license: ${{ secrets.ADVINST_LICENSE_KEY }}
-      - name: Build upstream installer format
+          dotnet-version: '8.0.x'
+      - name: Install the CLI version matching the app SDK
+        run: |
+          $sdkVersion = (Get-Content package.json -Raw | ConvertFrom-Json).dependencies.velopack
+          dotnet tool install --global vpk --version $sdkVersion
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install vpk' }
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: edhm-ui-v${{ needs.metadata.outputs.version }}-release-notes
+          path: source_v3/out/release/notes
+      - name: Build Velopack installer
         env:
           APP_VERSION: ${{ needs.metadata.outputs.version }}
-        run: ../.github/scripts/build-windows-installer.ps1 -Version $env:APP_VERSION
+        run: ../.github/scripts/build-velopack-installer.ps1 -Version $env:APP_VERSION -PackageId $env:VELOPACK_PACK_ID
+      - name: Test the packaged installer and startup hook
+        run: ../.github/scripts/test-velopack-installer.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: velopack-diagnostics
+          path: ${{ runner.temp }}/Velopack lifecycle Ω/*.txt
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: velopack-install-logs
+          path: ${{ runner.temp }}/Velopack lifecycle Ω/*.log
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: edhm-ui-v${{ needs.metadata.outputs.version }}-windows-advanced-installer-test
+          name: velopack-build-packages
+          path: source_v3/out/release/velopack/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edhm-ui-v${{ needs.metadata.outputs.version }}-windows-velopack-test
           path: source_v3/out/release/edhm-ui-v3-windows-x64.exe
           if-no-files-found: error
           compression-level: 0
@@ -91,7 +128,6 @@ jobs:
 
   linux:
     needs: metadata
-    if: needs.metadata.outputs.licensed == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     defaults:
@@ -107,6 +143,8 @@ jobs:
       - run: npm ci
       - name: Package Linux application
         run: npm run package -- --arch=x64
+      - name: Verify packaged startup and dependencies
+        run: node ../.github/scripts/check-packaged-app.cjs
       - name: Match upstream ZIP and installer layout
         run: |
           set -euo pipefail
@@ -133,14 +171,15 @@ jobs:
     needs: [metadata, windows, linux]
     runs-on: ubuntu-22.04
     steps:
-      - name: Summarize licensed build
+      - name: Summarize Velopack build
         env:
           APP_VERSION: ${{ needs.metadata.outputs.version }}
         run: |
-          echo "## EDHM-UI v${APP_VERSION}: Advanced Installer build" >> "$GITHUB_STEP_SUMMARY"
-          echo 'Windows EXE and Linux ZIP/script built. The Windows installer is unsigned. A separate job publishes the versioned release after both builds succeed.' >> "$GITHUB_STEP_SUMMARY"
+          echo "## EDHM-UI v${APP_VERSION}: Velopack build" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Windows EXE and Linux ZIP/script built. The Windows installer is unsigned. Select Publish release on a manual run to publish after both builds succeed.' >> "$GITHUB_STEP_SUMMARY"
 
   publish-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release
     needs: [metadata, windows, linux]
     concurrency:
       group: publish-package-release-${{ needs.metadata.outputs.version }}
@@ -161,5 +200,5 @@ jobs:
       - name: Publish release with matching EDHM patch notes
         env:
           GH_TOKEN: ${{ github.token }}
-          INSTALLER_VARIANT: advanced-installer
+          INSTALLER_VARIANT: velopack
         run: node .github/scripts/publish-package-release.cjs release-artifacts

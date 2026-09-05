@@ -1,21 +1,61 @@
-# Fork release packaging test
+# Release packaging
 
-Two independent workflows read `source_v3/package.json`, check the version against
-the lockfile, and build Windows and Linux from the same commit. Successful builds
-publish normal versioned releases in the fork. They do not create PRs.
-This experiment is separate from the EDHM v22.02 application PR.
+Two independent workflows build the Windows and Linux packages from the same commit:
 
-- **Package release (free installer)**: `.github/workflows/package-release-free-installer.yml`.
-- **Package release (Advanced Installer)**: `.github/workflows/package-release-advanced-installer.yml`.
+- **Package release (Velopack)** replaces the obsolete Advanced Installer workflow.
+- **Package release (free installer)** retains the WiX/NSIS installer and its MSI migration tests.
 
-Each can be run or adopted independently; the free workflow never reads a license
-secret and does not install or invoke Advanced Installer.
+Neither workflow requires a paid installer license. Both read the application version
+from `source_v3/package.json`, verify the lockfile, and obtain matching EDHM patch notes.
+The experiment remains in the fork, separate from the EDHM v22.02 application PR.
 
-Push to `codex/release-workflow-test` in `Fenris159/EDHM_UI` to run it. The fork's
-`main` branch has two small manual launchers: choose either workflow in Actions,
-click **Run workflow**, and leave the branch set to `main`. It dispatches the build
-on the test branch. You can also dispatch the test branch directly. Successful
-builds publish to Releases; intermediate Actions artifacts expire after 14 days.
+## Velopack: one-time setup for the maintainer
+
+1. Find the **existing Velopack package ID** in the local `vpk pack --packId` command,
+   build script, or the `<id>` element of the `.nuspec` inside an existing full `.nupkg`
+   (open it as a ZIP). Preserve the exact value. The EXE download filename and GitHub
+   repository name do not establish this identity.
+2. In GitHub **Settings → Secrets and variables → Actions → Variables**, create
+   `VELOPACK_PACK_ID` with that value. It is not a secret or license key. The workflow
+   fails early with setup guidance when it is absent or invalid.
+3. Run **Package release (Velopack)** with **Publish release** unchecked. Download the
+   Windows installer from the completed run's `windows-velopack-test` artifact and
+   test an upgrade over the maintainer's actual previous Velopack installer.
+4. Once validated, increment the app version and run with **Publish release** checked.
+   It publishes a normal stable GitHub release, with installers, patch notes, and
+   GitHub's automatic source archives. Existing published versions cannot be replaced.
+
+`source_v3/package.json` pins the Velopack SDK. CI installs the same CLI version from
+that field; update the npm dependency and lockfiles together when changing versions.
+Authors, display name, app version, icon, and executable are read from existing app
+metadata or set in `build-velopack-installer.ps1`. The workflow YAML exposes the package
+ID variable and publish toggle; no developer has to edit version strings each release.
+The build currently produces unsigned installers, like the free path. Optional signing
+should use the documented [Velopack signing options](https://docs.velopack.io/reference/cli/content/vpk-windows)
+with CI credentials, never workstation passwords committed to source.
+
+### Fork testing and upstream adoption
+
+The fork uses **`Fenris.EDHMUI.PackagingTest`** only for build testing. Publication with
+that test identity is rejected. It is not the maintainer's known package ID and does
+not establish upgrade compatibility with their installer.
+
+The fork's `main` has two small launchers so Actions shows **Run workflow**. They
+forward the publish checkbox to the full workflow on `codex/release-workflow-test`.
+Pushes build artifacts only. Manual runs can publish (Velopack defaults to build-only
+while compatibility is being verified; the free installer defaults to publishing).
+
+For upstream adoption, copy the **full workflow and supporting scripts/application
+changes from the test branch**, not the fork-main launcher. Then:
+
+- Set the real `VELOPACK_PACK_ID` repository variable.
+- Change the workflow's push branch from `codex/release-workflow-test` to the desired
+  upstream trigger and its repository guard from `Fenris159/EDHM_UI` to `BlueMystical/EDHM_UI`.
+- Update the repository guard in `publish-package-release.cjs` and its matching test.
+- Run build-only first and validate upgrade/launch on Windows 11 before publishing.
+
+Only one Windows installer variant should publish a given app version. Build logs,
+Velopack packages/feed, and note provenance stay in Actions artifacts for 14 days.
 
 ## Matching EDHM patch notes
 
@@ -57,32 +97,34 @@ rejected, keeping the source archives consistent with the installer payload.
 A failed or skipped build cannot publish. All publication remains restricted to
 the fork while this workflow is tested for upstream adoption.
 
-## Two Windows paths
+## Windows installer behavior
 
-| Path | Tools | Configuration | Artifact suffix |
-| --- | --- | --- | --- |
-| Existing installer | Advanced Installer Professional | `ADVINST_LICENSE_KEY` Actions secret; optional `ADVINST_VERSION` variable (default 22.0) | `windows-advanced-installer-test` |
-| Free installer | WiX 5.0.2 MSI compiler, NSIS 3.12 EXE wrapper | No license key or paid build service | `windows-free-test` |
+### Velopack
 
-Both artifacts contain **`edhm-ui-v3-windows-x64.exe`**, matching upstream's release
-filename. Choose **one** Windows variant per release. They install the same app,
-and must not be advertised as separate side-by-side products.
+`build-velopack-installer.ps1` packages the Forge output and copies its Setup EXE to
+`edhm-ui-v3-windows-x64.exe`, preserving the updater's download name. The early main
+process hook runs before Electron imports, settings access, or the single-instance
+lock. The native SDK is externalized from Vite and unpacked from ASAR. Desktop shortcut
+creation and hotfix paths follow the running executable, including Velopack's `current`
+subdirectory. Existing user settings locations are unchanged.
 
-The free path always builds and runs installation tests. Advanced Installer builds
-when its secret is present; otherwise it is explicitly skipped. No trial key
-belongs in source. Its hosted-runner trial previously expired, so the licensed path
-cannot be fully validated without a valid key.
+The application still checks GitHub releases and downloads the **full installer**.
+This work does not switch it to Velopack's UpdateManager or delta updates. Consequently,
+the `.nupkg` and feed are retained in the `velopack-build-packages` Actions artifact,
+not attached to the release. The public release still has exactly the three familiar
+application downloads plus GitHub's source archives.
 
-Both test installers are unsigned. The Advanced Installer script strips the
-workstation signing configuration only from its generated copy of the project.
-An Advanced Installer license does not provide a signing certificate.
+Velopack is a different installer family from the legacy MSI. It does not inherit the
+MSI upgrade code, maintenance UI, rollback behavior, or uninstall registration.
+Matching the existing Velopack package ID is necessary for Velopack-to-Velopack upgrades;
+it does not migrate an Advanced Installer/WiX installation automatically. Do not point
+Velopack at an old MSI-owned directory as a shortcut to migration. The maintainer's
+current Velopack package ID and any local migration customizations are still needed
+before claiming compatibility with their existing users.
 
-### Existing installer
-
-`build-windows-installer.ps1` copies `source_v3/out/Installer/EDHM-UI-V3.aip`, updates
-the version, removes obsolete file entries, and synchronizes the actual packaged
-files. It retains the original dialogs, custom actions, shortcuts, and upgrade
-identity. New Vite hashes and shader ZIP names need no manual file-list edits.
+Official references: [GitHub Actions](https://docs.velopack.io/distributing/github-actions),
+[Electron/Vite integration](https://docs.velopack.io/getting-started/javascript),
+[Setup options](https://docs.velopack.io/reference/cli/content/setup-windows).
 
 ### Free installer
 
@@ -122,9 +164,8 @@ See [WiX version lifecycle](https://docs.firegiant.com/wix/) and
 | Running application | Windows Installer Restart Manager handles files in use; upstream has its own stop-process action |
 | Bootstrapper-specific options | Advanced Installer's proprietary extraction/bootstrapper switches are not implemented |
 
-The paths target the same installation outcome. They are **not identical in every
-behavior**, and a PR must not claim otherwise. A future Advanced Installer release
-upgrading a free installation still needs a live test with a licensed build.
+The free path retains compatibility with the legacy MSI family; Velopack is a separate
+installer family and must not be described as interchangeable.
 Re-running the same EXE offers maintenance. A rebuilt EXE replaces an earlier
 package at the same app version so installer-only fixes reach the cached MSI;
 its separate cache folder preserves the previous package's source for rollback.
@@ -142,8 +183,9 @@ name expected by the existing shell script.
 
 [Fork run 33993776371](https://github.com/Fenris159/EDHM_UI/actions/runs/33993776371)
 passed all 31 application tests and the full installer lifecycle checks below.
-The separate Advanced Installer run verified its missing-secret skip behavior;
-it did not produce or test a licensed installer.
+Velopack has its own hosted-runner test for full payload hashes, the actual Electron
+startup hook, registration, shortcuts, repeated installation, and uninstallation.
+This does not replace a live upgrade test using the maintainer's existing Velopack installer.
 
 The Windows job runs application regression tests and real installer tests on a
 disposable GitHub-hosted runner. `test-windows-installers.ps1` refuses local or
@@ -166,6 +208,5 @@ The initial fork test verified Linux ZIP integrity, executable permissions, sett
 renderer, and packaged app version. Live Linux installation remains untested.
 
 Before proposing upstream: inspect the successful test run; manually test dialogs,
-launch, and files-in-use behavior; validate the licensed path and reverse upgrade
-when a key is available; configure signing if desired; then agree the publishing
+launch, and files-in-use behavior; validate the existing Velopack upgrade path; configure signing if desired; then agree the publishing
 trigger and replace the fork-only repository/branch guards.
