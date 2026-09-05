@@ -32,13 +32,12 @@ jobs:
         shell: pwsh
         working-directory: source_v3
     steps:
-      - name: Require the installer license
+      - name: Detect optional Advanced Installer license
+        id: license
         env:
           ADVINST_LICENSE_KEY: ${{ secrets.ADVINST_LICENSE_KEY }}
         run: |
-          if (-not $env:ADVINST_LICENSE_KEY) {
-            throw 'The upstream Professional installer requires ADVINST_LICENSE_KEY. Hosted-runner trial mode is expired; Linux can still build independently.'
-          }
+          "available=$([bool]$env:ADVINST_LICENSE_KEY)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
         working-directory: .
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -51,22 +50,62 @@ jobs:
         run: node --test tests/*.test.cjs
       - name: Package Windows application
         run: npm run package -- --arch=x64
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Set up free installer tools
+        run: |
+          dotnet tool install wix --version 5.0.2 --tool-path ../.tools/wix
+          if ($LASTEXITCODE -ne 0) { throw 'WiX setup failed' }
+          ../.tools/wix/wix.exe extension add WixToolset.UI.wixext/5.0.2
+          if ($LASTEXITCODE -ne 0) { throw 'WiX UI setup failed' }
+          choco install nsis --version 3.12.0 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS setup failed' }
+      - name: Build free Windows installer
+        env:
+          APP_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          ../.github/scripts/build-free-windows-installer.ps1 -Version $env:APP_VERSION -Wix ../.tools/wix/wix.exe -MakeNSIS "${env:ProgramFiles(x86)}/NSIS/makensis.exe"
+      - name: Test install, upgrade, repair and uninstall
+        run: ../.github/scripts/test-windows-installers.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edhm-ui-v${{ needs.metadata.outputs.version }}-windows-free-test
+          path: |
+            source_v3/out/release/free/edhm-ui-v3-windows-x64.exe
+            source_v3/out/release/free/payload-manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Upload installer test logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-installer-test-logs
+          path: source_v3/out/installer-tests/*.log
+          if-no-files-found: ignore
       - name: Set up Advanced Installer
+        if: steps.license.outputs.available == 'true'
         uses: Caphyon/advinst-github-action@7edde34c6ff935e53e3de72a5699efcfceb5f6c6
         with:
           advinst-version: ${{ vars.ADVINST_VERSION || '22.0' }}
           advinst-license: ${{ secrets.ADVINST_LICENSE_KEY }}
       - name: Build upstream installer format
+        if: steps.license.outputs.available == 'true'
         env:
           APP_VERSION: ${{ needs.metadata.outputs.version }}
         run: ../.github/scripts/build-windows-installer.ps1 -Version $env:APP_VERSION
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.license.outputs.available == 'true'
         with:
-          name: edhm-ui-v${{ needs.metadata.outputs.version }}-windows-test
+          name: edhm-ui-v${{ needs.metadata.outputs.version }}-windows-advanced-installer-test
           path: source_v3/out/release/edhm-ui-v3-windows-x64.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
+      - name: Report licensed path status
+        if: steps.license.outputs.available != 'true'
+        run: "'Advanced Installer path skipped: set ADVINST_LICENSE_KEY to build it. Free Windows installer was tested.' >> $env:GITHUB_STEP_SUMMARY"
 
   linux:
     needs: metadata
@@ -121,6 +160,7 @@ jobs:
             echo '- edhm-ui-v3-windows-x64.exe'
             echo '- edhm-ui-v3-linux-x64.zip'
             echo '- linux_installer.sh'
-            echo 'Download the two test artifacts from this run. No release or tag was published.'
-            echo 'Windows test installer is unsigned and was built using ADVINST_LICENSE_KEY.'
+            echo 'Download the free Windows and Linux artifacts. The Advanced Installer variant is also built when ADVINST_LICENSE_KEY is configured.'
+            echo 'Both Windows paths use the same release filename in separate artifacts. Choose one for a release.'
+            echo 'Windows test installers are unsigned. No release or tag was published.'
           } >> "$GITHUB_STEP_SUMMARY"
