@@ -57,7 +57,12 @@ try {
   foreach ($sql in @(
     "INSERT INTO ``CustomAction`` (``Action``,``Type``,``Target``) VALUES ('InstallerTestFailure',19,'Intentional CI rollback test')",
     "INSERT INTO ``InstallExecuteSequence`` (``Action``,``Condition``,``Sequence``) VALUES ('InstallerTestFailure','1',4001)"
-  )) { $view = $database.OpenView($sql); $view.Execute(); $view.Close() }
+  )) {
+    $view = $database.OpenView($sql)
+    $view.Execute()
+    $view.Close()
+    [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null
+  }
   $database.Commit()
   [Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) | Out-Null
   Invoke-Setup msiexec.exe "/i `"$failureMsi`" /qn /norestart /l*v `"$testRoot/rollback.log`"" @(1603)

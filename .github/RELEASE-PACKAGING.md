@@ -1,8 +1,14 @@
 # Fork release packaging test
 
-The workflow reads `source_v3/package.json`, checks the version against the lockfile,
-and builds Windows and Linux from the same commit. It creates no tags, releases, or
-PRs. This experiment is separate from the EDHM v22.02 application PR.
+Two independent workflows read `source_v3/package.json`, check the version against
+the lockfile, and build Windows and Linux from the same commit. Neither creates
+tags, releases, or PRs. This experiment is separate from the EDHM v22.02 application PR.
+
+- **Package release (free installer)**: `.github/workflows/package-release-free-installer.yml`.
+- **Package release (Advanced Installer)**: `.github/workflows/package-release-advanced-installer.yml`.
+
+Each can be run or adopted independently; the free workflow never reads a license
+secret and does not install or invoke Advanced Installer.
 
 Push to `codex/release-workflow-test` in `Fenris159/EDHM_UI` to run it. Manual dispatch
 is available once the workflow exists on the default branch. Download and extract

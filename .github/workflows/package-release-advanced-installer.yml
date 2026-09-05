@@ -1,0 +1,126 @@
+name: Package release (Advanced Installer)
+
+on:
+  push:
+    branches: [codex/release-workflow-test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-release-advanced-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    if: github.repository == 'Fenris159/EDHM_UI'
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      licensed: ${{ steps.license.outputs.available }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: version
+        run: node .github/scripts/release-version.cjs
+      - name: Check license availability
+        id: license
+        env:
+          ADVINST_LICENSE_KEY: ${{ secrets.ADVINST_LICENSE_KEY }}
+        run: |
+          if [[ -n "$ADVINST_LICENSE_KEY" ]]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo '## Build skipped: no Advanced Installer license' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Set the ADVINST_LICENSE_KEY repository Actions secret, then rerun this workflow. No installer was built or tested by this run.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  windows:
+    needs: metadata
+    if: needs.metadata.outputs.licensed == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: source_v3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source_v3/package-lock.json
+      - run: npm ci
+      - name: Run regression tests
+        run: node --test tests/*.test.cjs
+      - name: Package Windows application
+        run: npm run package -- --arch=x64
+      - name: Set up Advanced Installer
+        uses: Caphyon/advinst-github-action@7edde34c6ff935e53e3de72a5699efcfceb5f6c6
+        with:
+          advinst-version: ${{ vars.ADVINST_VERSION || '22.0' }}
+          advinst-license: ${{ secrets.ADVINST_LICENSE_KEY }}
+      - name: Build upstream installer format
+        env:
+          APP_VERSION: ${{ needs.metadata.outputs.version }}
+        run: ../.github/scripts/build-windows-installer.ps1 -Version $env:APP_VERSION
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edhm-ui-v${{ needs.metadata.outputs.version }}-windows-advanced-installer-test
+          path: source_v3/out/release/edhm-ui-v3-windows-x64.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  linux:
+    needs: metadata
+    if: needs.metadata.outputs.licensed == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: source_v3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: source_v3/package-lock.json
+      - run: npm ci
+      - name: Package Linux application
+        run: npm run package -- --arch=x64
+      - name: Match upstream ZIP and installer layout
+        run: |
+          set -euo pipefail
+          mkdir -p out/release
+          test -x out/edhm-ui-v3-linux-x64/edhm-ui-v3
+          test -f out/edhm-ui-v3-linux-x64/resources/images/icon.png
+          test -f out/edhm-ui-v3-linux-x64/resources/settings_window/settings.html
+          (cd out && zip -q -r -y release/edhm-ui-v3-linux-x64.zip edhm-ui-v3-linux-x64)
+          sed 's/\r$//' public/linux_installer.sh > out/release/linux_installer.sh
+          chmod +x out/release/linux_installer.sh
+          bash -n out/release/linux_installer.sh
+          unzip -tq out/release/edhm-ui-v3-linux-x64.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edhm-ui-v${{ needs.metadata.outputs.version }}-linux-test
+          path: |
+            source_v3/out/release/edhm-ui-v3-linux-x64.zip
+            source_v3/out/release/linux_installer.sh
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  summary:
+    needs: [metadata, windows, linux]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Summarize licensed build
+        env:
+          APP_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          echo "## EDHM-UI v${APP_VERSION}: Advanced Installer build" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Windows EXE and Linux ZIP/script built. The Windows installer is unsigned. No release or tag was published.' >> "$GITHUB_STEP_SUMMARY"

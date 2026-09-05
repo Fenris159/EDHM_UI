@@ -1,4 +1,4 @@
-name: Package release (fork test)
+name: Package release (free installer)
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: package-release-test-${{ github.ref }}
+  group: package-release-free-installer-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,13 +32,6 @@ jobs:
         shell: pwsh
         working-directory: source_v3
     steps:
-      - name: Detect optional Advanced Installer license
-        id: license
-        env:
-          ADVINST_LICENSE_KEY: ${{ secrets.ADVINST_LICENSE_KEY }}
-        run: |
-          "available=$([bool]$env:ADVINST_LICENSE_KEY)".ToLowerInvariant() >> $env:GITHUB_OUTPUT
-        working-directory: .
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -84,28 +77,6 @@ jobs:
           name: windows-installer-test-logs
           path: source_v3/out/installer-tests/*.log
           if-no-files-found: ignore
-      - name: Set up Advanced Installer
-        if: steps.license.outputs.available == 'true'
-        uses: Caphyon/advinst-github-action@7edde34c6ff935e53e3de72a5699efcfceb5f6c6
-        with:
-          advinst-version: ${{ vars.ADVINST_VERSION || '22.0' }}
-          advinst-license: ${{ secrets.ADVINST_LICENSE_KEY }}
-      - name: Build upstream installer format
-        if: steps.license.outputs.available == 'true'
-        env:
-          APP_VERSION: ${{ needs.metadata.outputs.version }}
-        run: ../.github/scripts/build-windows-installer.ps1 -Version $env:APP_VERSION
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: steps.license.outputs.available == 'true'
-        with:
-          name: edhm-ui-v${{ needs.metadata.outputs.version }}-windows-advanced-installer-test
-          path: source_v3/out/release/edhm-ui-v3-windows-x64.exe
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
-      - name: Report licensed path status
-        if: steps.license.outputs.available != 'true'
-        run: "'Advanced Installer path skipped: set ADVINST_LICENSE_KEY to build it. Free Windows installer was tested.' >> $env:GITHUB_STEP_SUMMARY"
 
   linux:
     needs: metadata
@@ -160,7 +131,6 @@ jobs:
             echo '- edhm-ui-v3-windows-x64.exe'
             echo '- edhm-ui-v3-linux-x64.zip'
             echo '- linux_installer.sh'
-            echo 'Download the free Windows and Linux artifacts. The Advanced Installer variant is also built when ADVINST_LICENSE_KEY is configured.'
-            echo 'Both Windows paths use the same release filename in separate artifacts. Choose one for a release.'
+            echo 'Download the free Windows and Linux artifacts. Advanced Installer has its own independent workflow.'
             echo 'Windows test installers are unsigned. No release or tag was published.'
           } >> "$GITHUB_STEP_SUMMARY"
