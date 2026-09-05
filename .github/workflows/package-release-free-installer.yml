@@ -149,11 +149,14 @@ jobs:
             echo '- edhm-ui-v3-linux-x64.zip'
             echo '- linux_installer.sh'
             echo 'Download the free Windows and Linux artifacts. Advanced Installer has its own independent workflow.'
-            echo 'Windows test installers are unsigned. A separate job stages a draft test release after both builds succeed.'
+            echo 'Windows test installers are unsigned. A separate job publishes the versioned release after both builds succeed.'
           } >> "$GITHUB_STEP_SUMMARY"
 
-  draft-release:
+  publish-release:
     needs: [metadata, windows, linux]
+    concurrency:
+      group: publish-package-release-${{ needs.metadata.outputs.version }}
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -167,8 +170,8 @@ jobs:
           pattern: edhm-ui-v${{ needs.metadata.outputs.version }}-*
           path: release-artifacts
           merge-multiple: true
-      - name: Stage draft release with matching EDHM patch notes
+      - name: Publish release with matching EDHM patch notes
         env:
           GH_TOKEN: ${{ github.token }}
           INSTALLER_VARIANT: free
-        run: node .github/scripts/draft-package-release.cjs release-artifacts
+        run: node .github/scripts/publish-package-release.cjs release-artifacts

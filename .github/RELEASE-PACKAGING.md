@@ -2,7 +2,7 @@
 
 Two independent workflows read `source_v3/package.json`, check the version against
 the lockfile, and build Windows and Linux from the same commit. Successful builds
-stage draft test releases in the fork; they never publish releases or create PRs.
+publish normal versioned releases in the fork. They do not create PRs.
 This experiment is separate from the EDHM v22.02 application PR.
 
 - **Package release (free installer)**: `.github/workflows/package-release-free-installer.yml`.
@@ -11,9 +11,11 @@ This experiment is separate from the EDHM v22.02 application PR.
 Each can be run or adopted independently; the free workflow never reads a license
 secret and does not install or invoke Advanced Installer.
 
-Push to `codex/release-workflow-test` in `Fenris159/EDHM_UI` to run it. Manual dispatch
-is available once the workflow exists on the default branch. Download and extract
-the artifact ZIPs from Actions; artifacts expire after 14 days.
+Push to `codex/release-workflow-test` in `Fenris159/EDHM_UI` to run it. The fork's
+`main` branch has two small manual launchers: choose either workflow in Actions,
+click **Run workflow**, and leave the branch set to `main`. It dispatches the build
+on the test branch. You can also dispatch the test branch directly. Successful
+builds publish to Releases; intermediate Actions artifacts expire after 14 days.
 
 ## Matching EDHM patch notes
 
@@ -38,16 +40,22 @@ EDHM version, upstream commit, and upstream archive blob. The UI ZIP is repackag
 so its bytes need not equal the upstream ZIP; version matching does not claim a
 byte-for-byte payload comparison.
 
-After both platform jobs succeed, a job with `contents: write` stages a **draft
-prerelease** with the three standard installer assets and both metadata files.
-The free and licensed paths use separate draft tags, `packaging-vAPP_VERSION-free`
-and `packaging-vAPP_VERSION-advanced-installer`, so they cannot replace each other's
-EXE. Rebuilds replace the corresponding managed draft; published releases are
-never overwritten. A failed or skipped installer build cannot stage a release.
-Drafts are for maintainer review and are invisible to normal update checks. For
-production adoption, use a normal `vAPP_VERSION` release with the generated body
-and choose one Windows installer path; the fork testing tags are not production
-update versions.
+After both platform jobs succeed, a job with `contents: write` publishes a stable
+release titled and tagged `vAPP_VERSION`, marked Latest, with exactly three assets:
+`edhm-ui-v3-windows-x64.exe`, `edhm-ui-v3-linux-x64.zip`, and `linux_installer.sh`.
+Notes are the release body; the notes and metadata files remain in Actions artifacts
+and are not attached to the public release. GitHub automatically adds Source code
+(zip) and Source code (tar.gz) links from the release tag.
+
+The publisher stages files in a temporary draft, then publishes automatically only
+after upload succeeds. An interrupted upload can leave a draft for the next attempt
+to resume. Both installer paths share a publishing concurrency group for each app
+version. Choose one Windows path for a release; an already published version cannot
+be overwritten by the other path or by a rerun. Increment the app version to publish
+another release. Existing tags or drafts pointing at another build commit are
+rejected, keeping the source archives consistent with the installer payload.
+A failed or skipped build cannot publish. All publication remains restricted to
+the fork while this workflow is tested for upstream adoption.
 
 ## Two Windows paths
 
