@@ -40,6 +40,11 @@ $view.Close()
 [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null
 $database.Commit()
 [Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) | Out-Null
+$summary = $installer.SummaryInformation([string]$testMsi, 1)
+$summary.GetType().InvokeMember('Property', [Reflection.BindingFlags]::SetProperty, $null, $summary,
+  [object[]]@([int]9, [string][guid]::NewGuid().ToString('B').ToUpperInvariant())) | Out-Null
+$summary.Persist()
+[Runtime.InteropServices.Marshal]::FinalReleaseComObject($summary) | Out-Null
 $installer.UILevel = 2
 $session = $installer.OpenPackage([string]$testMsi, 0)
 try {

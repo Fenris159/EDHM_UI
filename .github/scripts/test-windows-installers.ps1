@@ -86,6 +86,13 @@ try {
   [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null
   $database.Commit()
   [Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) | Out-Null
+  # A real rebuild has a fresh PackageCode too. Reusing it makes MSI load the
+  # installed package from cache instead of this replacement fixture.
+  $summary = $installer.SummaryInformation([string]$replacement, 1)
+  $summary.GetType().InvokeMember('Property', [Reflection.BindingFlags]::SetProperty, $null, $summary,
+    [object[]]@([int]9, [string][guid]::NewGuid().ToString('B').ToUpperInvariant())) | Out-Null
+  $summary.Persist()
+  [Runtime.InteropServices.Marshal]::FinalReleaseComObject($summary) | Out-Null
   Invoke-Setup msiexec.exe "/i `"$replacement`" /qn /norestart /l*v `"$testRoot/same-version-upgrade.log`""
   Assert-Installed $customDirectory
   if (@(Get-Products)[0] -ne $replacementCode) { throw 'Same-version upgrade retained the old installer' }
