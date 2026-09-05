@@ -21,8 +21,8 @@ Manual dispatch is available once the workflow exists on the fork's default bran
 The Windows test installer is unsigned. The author's workstation signing settings
 are removed only from the generated CI project. Set the `ADVINST_LICENSE_KEY`
 Actions secret for a licensed build; never put the key in source. The optional
-`ADVINST_VERSION` repository variable selects a licensed version (default 18.8.1,
-matching the checked-in project). Without a license, the vendor's trial restrictions
+`ADVINST_VERSION` repository variable selects a licensed version (default 22.0,
+the minimum supported by the setup action). Without a license, the vendor's trial restrictions
 apply; trial-built packages are for evaluation, not production distribution.
 
 CI synchronizes the package folder into a copy of the installer project, so changed
