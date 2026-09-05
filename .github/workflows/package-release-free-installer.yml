@@ -1,0 +1,22 @@
+# GitHub requires a default-branch workflow to display manual run controls.
+name: Package release (free installer)
+run-name: Launch free installer packaging test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  launch:
+    if: github.repository == 'Fenris159/EDHM_UI'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Start the packaging workflow on its test branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_WORKFLOW: package-release-free-installer.yml
+        run: |
+          gh workflow run "$BUILD_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref codex/release-workflow-test
+          echo "Build requested on codex/release-workflow-test. [View packaging runs](https://github.com/$GITHUB_REPOSITORY/actions/workflows/$BUILD_WORKFLOW?query=branch%3Acodex%2Frelease-workflow-test)." >> "$GITHUB_STEP_SUMMARY"
