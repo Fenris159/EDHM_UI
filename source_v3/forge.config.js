@@ -106,6 +106,12 @@ module.exports = {
   //},
 };
 
+// Use the active renderer/plugins on Linux with the names expected by linux_installer.sh.
+if (process.platform === 'linux') {
+  module.exports.packagerConfig.name = 'edhm-ui-v3';
+  module.exports.packagerConfig.executableName = 'edhm-ui-v3';
+}
+
 /*  // For Linux
 module.exports = {
   packagerConfig: {
