@@ -22,8 +22,9 @@ The Windows test installer is unsigned. The author's workstation signing setting
 are removed only from the generated CI project. Set the `ADVINST_LICENSE_KEY`
 Actions secret for a licensed build; never put the key in source. The optional
 `ADVINST_VERSION` repository variable selects a licensed version (default 22.0,
-the minimum supported by the setup action). Without a license, the vendor's trial restrictions
-apply; trial-built packages are for evaluation, not production distribution.
+the minimum supported by the setup action). A valid license is required: the hosted
+runner reports zero trial days remaining, so the workflow fails early with a clear
+message if that secret is missing. Linux builds independently without this license.
 
 CI synchronizes the package folder into a copy of the installer project, so changed
 shader archive names, new resources, and Vite asset hashes do not need manual edits.
@@ -35,3 +36,13 @@ Before proposing this upstream: test install, launch, upgrade and uninstall on W
 and test the shell installer on Linux; configure a suitable Advanced Installer license
 and signing; then agree the publishing trigger and replace the fork-only repository
 and branch guards. Keep this experiment out of the EDHM v22.02 application PR.
+
+## First fork test
+
+[Run 33991527257](https://github.com/Fenris159/EDHM_UI/actions/runs/33991527257)
+detected 3.0.71, passed all 31 Windows regression tests, packaged both applications,
+and generated the Linux release assets. The downloaded Linux ZIP was checked for
+integrity, root-folder layout, executable permissions, settings renderer, and packaged
+app version. Windows installer synchronization succeeded, then Advanced Installer
+stopped at its license check (zero trial days remaining). Install/upgrade/uninstall
+testing is still pending. This is not yet a fully validated release pipeline.
