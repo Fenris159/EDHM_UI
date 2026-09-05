@@ -20,8 +20,23 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Test release note matching
+        run: node --test .github/scripts/tests/*.test.cjs
       - id: version
         run: node .github/scripts/release-version.cjs
+      - name: Match bundled EDHM release and generate notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/release-notes.cjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edhm-ui-v${{ steps.version.outputs.version }}-release-notes
+          path: source_v3/out/release/notes/*
+          if-no-files-found: error
+          retention-days: 14
 
   windows:
     needs: metadata
@@ -134,5 +149,26 @@ jobs:
             echo '- edhm-ui-v3-linux-x64.zip'
             echo '- linux_installer.sh'
             echo 'Download the free Windows and Linux artifacts. Advanced Installer has its own independent workflow.'
-            echo 'Windows test installers are unsigned. No release or tag was published.'
+            echo 'Windows test installers are unsigned. A separate job stages a draft test release after both builds succeed.'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  draft-release:
+    needs: [metadata, windows, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: edhm-ui-v${{ needs.metadata.outputs.version }}-*
+          path: release-artifacts
+          merge-multiple: true
+      - name: Stage draft release with matching EDHM patch notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALLER_VARIANT: free
+        run: node .github/scripts/draft-package-release.cjs release-artifacts

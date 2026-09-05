@@ -1,8 +1,9 @@
 # Fork release packaging test
 
 Two independent workflows read `source_v3/package.json`, check the version against
-the lockfile, and build Windows and Linux from the same commit. Neither creates
-tags, releases, or PRs. This experiment is separate from the EDHM v22.02 application PR.
+the lockfile, and build Windows and Linux from the same commit. Successful builds
+stage draft test releases in the fork; they never publish releases or create PRs.
+This experiment is separate from the EDHM v22.02 application PR.
 
 - **Package release (free installer)**: `.github/workflows/package-release-free-installer.yml`.
 - **Package release (Advanced Installer)**: `.github/workflows/package-release-advanced-installer.yml`.
@@ -13,6 +14,40 @@ secret and does not install or invoke Advanced Installer.
 Push to `codex/release-workflow-test` in `Fenris159/EDHM_UI` to run it. Manual dispatch
 is available once the workflow exists on the default branch. Download and extract
 the artifact ZIPs from Actions; artifacts expire after 14 days.
+
+## Matching EDHM patch notes
+
+Both workflows run `.github/scripts/release-notes.cjs` before packaging. It derives
+the EDHM version from the same `source_v3/src/data/ODYSS/ODYSS_EDHM-v*.zip` filename
+used by the application. It searches `psychicEgg/EDHM` main history for that
+version's archive and an exact `EDHM vVERSION` commit-title token. It fails for
+missing or ambiguous matches, empty notes, or failed API requests. It never falls
+back to the latest release, which may be newer than the bundled shaders.
+
+For v22.02 the source is
+[`a0d14ec`](https://github.com/psychicEgg/EDHM/commit/a0d14ec51117be9052f1cb337dad33178b7b7525).
+The matching commit's complete message body is retained with a source link.
+Optional UI-specific changes can be added in `.github/release-notes/vAPP_VERSION.md`.
+Both sets of notes precede `----`, the existing application's update-notification
+separator; installation instructions follow it. No updater endpoint or application
+code change is needed when these notes are eventually published upstream.
+
+The `release-notes` Actions artifact contains `release-notes.md` and
+`release-metadata.json`. Metadata records the app commit, bundled ZIP SHA-256,
+EDHM version, upstream commit, and upstream archive blob. The UI ZIP is repackaged,
+so its bytes need not equal the upstream ZIP; version matching does not claim a
+byte-for-byte payload comparison.
+
+After both platform jobs succeed, a job with `contents: write` stages a **draft
+prerelease** with the three standard installer assets and both metadata files.
+The free and licensed paths use separate draft tags, `packaging-vAPP_VERSION-free`
+and `packaging-vAPP_VERSION-advanced-installer`, so they cannot replace each other's
+EXE. Rebuilds replace the corresponding managed draft; published releases are
+never overwritten. A failed or skipped installer build cannot stage a release.
+Drafts are for maintainer review and are invisible to normal update checks. For
+production adoption, use a normal `vAPP_VERSION` release with the generated body
+and choose one Windows installer path; the fork testing tags are not production
+update versions.
 
 ## Two Windows paths
 
