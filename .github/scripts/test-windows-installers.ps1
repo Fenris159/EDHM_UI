@@ -20,7 +20,7 @@ function Invoke-Setup([string]$File, [string]$Arguments, [int[]]$Expected = @(0,
   if ($process.ExitCode -notin $Expected) { throw "Installer failed: $File exit $($process.ExitCode)" }
 }
 function Assert-Installed([string]$Directory) {
-  $products = Get-Products
+  $products = @(Get-Products)
   if ($products.Count -ne 1) { throw "Expected one registered product, found $($products.Count)" }
   if ($installer.ProductInfo($products[0], 'VersionString') -ne $version) { throw 'Incorrect installed version' }
   foreach ($entry in $manifest) {
@@ -49,6 +49,21 @@ try {
   Invoke-Setup $upstream "/exenoui /qn /norestart APPDIR=`"$customDirectory`" RUNAPPLICATION=0 /l*v `"$testRoot/upstream-install.log`""
   if ((Get-Products).Count -ne 1) { throw 'Upstream fixture did not install' }
   [IO.File]::WriteAllText((Join-Path $customDirectory 'my-user-file.txt'), 'keep me')
+  # Fault-inject a COPY of the MSI to verify that an interrupted upgrade restores
+  # the old product. The distributable MSI and EXE are never modified.
+  $failureMsi = Join-Path $testRoot 'rollback-test.msi'
+  Copy-Item -LiteralPath $msi -Destination $failureMsi
+  $database = $installer.OpenDatabase($failureMsi, 1)
+  foreach ($sql in @(
+    "INSERT INTO ``CustomAction`` (``Action``,``Type``,``Target``) VALUES ('InstallerTestFailure',19,'Intentional CI rollback test')",
+    "INSERT INTO ``InstallExecuteSequence`` (``Action``,``Condition``,``Sequence``) VALUES ('InstallerTestFailure','1',4001)"
+  )) { $view = $database.OpenView($sql); $view.Execute(); $view.Close() }
+  $database.Commit()
+  [Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) | Out-Null
+  Invoke-Setup msiexec.exe "/i `"$failureMsi`" /qn /norestart /l*v `"$testRoot/rollback.log`"" @(1603)
+  $restored = @(Get-Products)
+  if ($restored.Count -ne 1 -or $installer.ProductInfo($restored[0], 'VersionString') -ne '3.0.70') { throw 'Failed upgrade did not restore upstream' }
+  if (-not (Test-Path (Join-Path $customDirectory 'EDHM-UI-V3.exe'))) { throw 'Rollback did not restore the executable' }
   Invoke-Setup $free "/qn /norestart /l*v `"$testRoot/free-upgrade.log`""
   Assert-Installed $customDirectory
   # Both the MSI source and the EXE must block a downgrade to the released version.
@@ -71,7 +86,13 @@ try {
   Uninstall-Current 'fresh-uninstall'
   if (Test-Path (Join-Path $defaultDirectory 'EDHM-UI-V3.exe')) { throw 'Uninstall left application files' }
   if ((Get-Content $sentinel -Raw) -ne 'preserve my settings') { throw 'User data was changed' }
-  Write-Output 'PASS: upstream upgrade, downgrade rejection, payload hashes, repair, fresh install, shortcuts, uninstall, user-data preservation'
+  Invoke-Setup $free "/qn /norestart DESKTOPSHORTCUT=`"`" MENUSHORTCUT=`"`" /l*v `"$testRoot/no-shortcuts.log`""
+  Assert-Installed $defaultDirectory
+  foreach ($folder in @([Environment]::GetFolderPath('CommonDesktopDirectory'), [Environment]::GetFolderPath('CommonPrograms'))) {
+    if (Test-Path (Join-Path $folder 'EDHM-UI-V3.lnk')) { throw 'A disabled shortcut was created or a previous shortcut was not removed' }
+  }
+  Uninstall-Current 'no-shortcuts-uninstall'
+  Write-Output 'PASS: upstream upgrade, rollback, downgrade rejection, payload hashes, repair, fresh install, shortcut options, uninstall, user-data preservation'
 } finally {
   Uninstall-Current 'cleanup'
 }

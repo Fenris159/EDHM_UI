@@ -40,6 +40,9 @@
         <Control Id="Bar" Type="ProgressBar" X="20" Y="140" Width="330" Height="15" ProgressBlocks="yes">
           <Subscribe Event="SetProgress" Attribute="Progress" />
         </Control>
+        <Control Id="Cancel" Type="PushButton" X="285" Y="185" Width="65" Height="23" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
       </Dialog>
       <Dialog Id="Complete" Width="370" Height="220" Title="EDHM-UI-V3 Setup">
         <Control Id="Title" Type="Text" X="20" Y="15" Width="330" Height="50" Text="{\Title}Setup completed successfully" />
@@ -50,6 +53,7 @@
         </Control>
       </Dialog>
       <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="CancelDlg" />
       <DialogRef Id="FatalError" />
       <DialogRef Id="UserExit" />
       <DialogRef Id="FilesInUse" />

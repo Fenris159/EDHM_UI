@@ -1,48 +1,107 @@
-# Fork packaging test
+# Fork release packaging test
 
-The `Package release (fork test)` workflow builds the same three asset names as
-[upstream v3.0.70](https://github.com/BlueMystical/EDHM_UI/releases/tag/v3.0.70):
+The workflow reads `source_v3/package.json`, checks the version against the lockfile,
+and builds Windows and Linux from the same commit. It creates no tags, releases, or
+PRs. This experiment is separate from the EDHM v22.02 application PR.
 
-- `edhm-ui-v3-windows-x64.exe`: the existing Advanced Installer project and UI.
-- `edhm-ui-v3-linux-x64.zip`: contains `edhm-ui-v3-linux-x64/edhm-ui-v3` and its resources.
-- `linux_installer.sh`: the existing installer script, with Unix line endings.
+Push to `codex/release-workflow-test` in `Fenris159/EDHM_UI` to run it. Manual dispatch
+is available once the workflow exists on the default branch. Download and extract
+the artifact ZIPs from Actions; artifacts expire after 14 days.
 
-The version comes from `source_v3/package.json`. The workflow checks the lockfile,
-sets the Windows installer version automatically, and labels the artifacts with
-the detected version. Advanced Installer generates a new product code when its
-version changes and retains the existing upgrade code.
+## Two Windows paths
 
-Push to `codex/release-workflow-test` to run it in `Fenris159/EDHM_UI`. Download both
-artifacts from the Actions run page and extract their outer artifact ZIPs. Place
-the Linux ZIP and shell script together, as described in upstream's release.
-Artifacts expire after 14 days. The workflow does not create tags, releases, or PRs.
-Manual dispatch is available once the workflow exists on the fork's default branch.
+| Path | Tools | Configuration | Artifact suffix |
+| --- | --- | --- | --- |
+| Existing installer | Advanced Installer Professional | `ADVINST_LICENSE_KEY` Actions secret; optional `ADVINST_VERSION` variable (default 22.0) | `windows-advanced-installer-test` |
+| Free installer | WiX 5.0.2 MSI compiler, NSIS 3.12 EXE wrapper | No license key or paid build service | `windows-free-test` |
 
-The Windows test installer is unsigned. The author's workstation signing settings
-are removed only from the generated CI project. Set the `ADVINST_LICENSE_KEY`
-Actions secret for a licensed build; never put the key in source. The optional
-`ADVINST_VERSION` repository variable selects a licensed version (default 22.0,
-the minimum supported by the setup action). A valid license is required: the hosted
-runner reports zero trial days remaining, so the workflow fails early with a clear
-message if that secret is missing. Linux builds independently without this license.
+Both artifacts contain **`edhm-ui-v3-windows-x64.exe`**, matching upstream's release
+filename. Choose **one** Windows variant per release. They install the same app,
+and must not be advertised as separate side-by-side products.
 
-CI synchronizes the package folder into a copy of the installer project, so changed
-shader archive names, new resources, and Vite asset hashes do not need manual edits.
-The original project is retained. Linux uses the active Forge plugins, including
-the settings renderer, with the executable and folder names expected by the shell
-installer. No Windows installation or live-game changes run on CI.
+The free path always builds and runs installation tests. Advanced Installer builds
+when its secret is present; otherwise it is explicitly skipped. No trial key
+belongs in source. Its hosted-runner trial previously expired, so the licensed path
+cannot be fully validated without a valid key.
 
-Before proposing this upstream: test install, launch, upgrade and uninstall on Windows,
-and test the shell installer on Linux; configure a suitable Advanced Installer license
-and signing; then agree the publishing trigger and replace the fork-only repository
-and branch guards. Keep this experiment out of the EDHM v22.02 application PR.
+Both test installers are unsigned. The Advanced Installer script strips the
+workstation signing configuration only from its generated copy of the project.
+An Advanced Installer license does not provide a signing certificate.
 
-## First fork test
+### Existing installer
 
-[Run 33991527257](https://github.com/Fenris159/EDHM_UI/actions/runs/33991527257)
-detected 3.0.71, passed all 31 Windows regression tests, packaged both applications,
-and generated the Linux release assets. The downloaded Linux ZIP was checked for
-integrity, root-folder layout, executable permissions, settings renderer, and packaged
-app version. Windows installer synchronization succeeded, then Advanced Installer
-stopped at its license check (zero trial days remaining). Install/upgrade/uninstall
-testing is still pending. This is not yet a fully validated release pipeline.
+`build-windows-installer.ps1` copies `source_v3/out/Installer/EDHM-UI-V3.aip`, updates
+the version, removes obsolete file entries, and synchronizes the actual packaged
+files. It retains the original dialogs, custom actions, shortcuts, and upgrade
+identity. New Vite hashes and shader ZIP names need no manual file-list edits.
+
+### Free installer
+
+`build-free-windows-installer.ps1` generates one MSI component per packaged file,
+with stable component IDs and a product code derived from the app version. It reads
+the upgrade code from the original `.aip`. The test artifact includes a SHA-256
+payload manifest for checking installed files.
+
+The NSIS EXE only carries and launches this MSI. Windows Installer handles
+elevation, repair, rollback, upgrades, downgrade rejection, and uninstallation.
+NSIS registers no second uninstaller. It retains the source MSI in
+`%LOCALAPPDATA%\Blue Mystic\EDHM-UI-V3\Installer\VERSION` for maintenance. That cache
+remains after uninstall; it contains no user settings.
+
+WiX **5.0.2** is intentionally pinned: WiX 6 and later introduced a maintenance fee
+with additional terms. WiX 5 is an older, out-of-support build tool, so updating
+this pin requires reviewing licensing and compatibility. Only its MSI compiler
+and dialog definitions are used; the older WiX Burn bootstrapper and native
+custom-action DLLs are **not shipped**. The EXE wrapper uses NSIS 3.12.
+See [WiX version lifecycle](https://docs.firegiant.com/wix/) and
+[maintenance fee details](https://docs.firegiant.com/wix/osmf/).
+
+### Compatibility and differences
+
+| Behavior | Free path |
+| --- | --- |
+| Payload, version, publisher, icon, help/update links | Same packaged application and metadata |
+| Default location | `%LOCALAPPDATA%\EDHM-UI-V3`, matching upstream's machine-scoped MSI |
+| Existing install location | Reads upstream's 32-bit `HKLM\Software\Blue Mystic\EDHM-UI-V3\Path` value |
+| Product family | Same MSI upgrade code; old product removed inside the transaction to support rollback and changed component layout |
+| Shortcuts | Desktop and Start Menu, same names and targets, selectable on initial install |
+| User settings/files | No recursive cleanup; only installer-owned files/values removed |
+| Maintenance | Repair and uninstall; one Apps & Features entry |
+| Launch after installation | Completion checkbox; no launch in silent mode |
+| Silent use | MSI arguments, e.g. `/qn /norestart`, `/l*v "log.txt"`, `APPDIR="path"` |
+| Installer UI | New MSI dialogs, not a pixel-identical copy of Advanced Installer |
+| Running application | Windows Installer Restart Manager handles files in use; upstream has its own stop-process action |
+| Bootstrapper-specific options | Advanced Installer's proprietary extraction/bootstrapper switches are not implemented |
+
+The paths target the same installation outcome. They are **not identical in every
+behavior**, and a PR must not claim otherwise. A future Advanced Installer release
+upgrading a free installation still needs a live test with a licensed build.
+Same-version rebuilding is maintenance; increment the app version when publishing
+changed application files.
+
+## Linux
+
+The Linux artifact contains `edhm-ui-v3-linux-x64.zip` (rooted at
+`edhm-ui-v3-linux-x64/`) and `linux_installer.sh` with Unix line endings, matching
+upstream's other two asset names. Place the two assets together for installation.
+The active Forge configuration includes both renderers and uses the executable
+name expected by the existing shell script.
+
+## Validation
+
+The Windows job runs application regression tests and real installer tests on a
+disposable GitHub-hosted runner. `test-windows-installers.ps1` refuses local or
+self-hosted execution to avoid replacing a developer's installation. It uses the
+checksum-pinned upstream 3.0.70 EXE as an upgrade fixture and checks installed
+payload hashes, registered version, custom/default locations, downgrade rejection,
+rollback after a failed upgrade, repair, shortcut options, uninstall, and user-file
+preservation. Logs upload on failure.
+No Elite Dangerous installation is required or modified.
+
+The initial fork test verified Linux ZIP integrity, executable permissions, settings
+renderer, and packaged app version. Live Linux installation remains untested.
+
+Before proposing upstream: inspect the successful test run; manually test dialogs,
+launch, and files-in-use behavior; validate the licensed path and reverse upgrade
+when a key is available; configure signing if desired; then agree the publishing
+trigger and replace the fork-only repository/branch guards.

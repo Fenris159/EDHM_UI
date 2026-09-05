@@ -2,7 +2,8 @@
 Unicode true
 RequestExecutionLevel user
 SilentInstall silent
-SetCompressor /SOLID lzma
+; The embedded MSI cabinet is already compressed; avoid recompressing 250+ MB.
+SetCompress off
 Name "EDHM-UI-V3"
 OutFile "${OutputExe}"
 Icon "${AppIcon}"
