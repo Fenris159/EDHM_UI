@@ -13,6 +13,7 @@ VIAddVersionKey /LANG=1033 "FileDescription" "EDHM-UI-V3 Setup"
 VIAddVersionKey /LANG=1033 "CompanyName" "Blue Mystic"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "Blue Mystic"
 VIAddVersionKey /LANG=1033 "FileVersion" "${AppVersion}"
+VIAddVersionKey /LANG=1033 "ProductVersion" "${AppVersion}"
 !include "FileFunc.nsh"
 !include "LogicLib.nsh"
 

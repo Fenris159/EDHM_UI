@@ -95,6 +95,11 @@ name expected by the existing shell script.
 
 ## Validation
 
+[Fork run 33993776371](https://github.com/Fenris159/EDHM_UI/actions/runs/33993776371)
+passed all 31 application tests and the full installer lifecycle checks below.
+The separate Advanced Installer run verified its missing-secret skip behavior;
+it did not produce or test a licensed installer.
+
 The Windows job runs application regression tests and real installer tests on a
 disposable GitHub-hosted runner. `test-windows-installers.ps1` refuses local or
 self-hosted execution to avoid replacing a developer's installation. It uses the

@@ -74,5 +74,9 @@ if (-not $MsiOnly) {
   $exe = Join-Path $OutputDirectory 'edhm-ui-v3-windows-x64.exe'
   & $MakeNSIS /V2 "/DAppVersion=$Version" "/DSourceMsi=$msi" "/DOutputExe=$exe" "/DAppIcon=$icon" (Join-Path $repoRoot '.github/installers/Bootstrapper.nsi')
   if ($LASTEXITCODE -ne 0) { throw "NSIS build failed: $LASTEXITCODE" }
+  $info = (Get-Item -LiteralPath $exe).VersionInfo
+  if ($info.FileVersion -ne $Version -or $info.ProductVersion -ne $Version) {
+    throw 'Installer EXE version metadata does not match package.json'
+  }
 }
 Write-Output "Built free MSI installer $Version ($productCode)"
