@@ -1,9 +1,14 @@
 # GitHub requires a default-branch workflow to display manual run controls.
-name: Package release (Advanced Installer)
-run-name: Launch Advanced Installer packaging test
+name: Package release (Velopack)
+run-name: Launch Velopack packaging test
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a normal GitHub release after validation (off = build artifacts only)
+        type: boolean
+        default: false
 
 permissions:
   actions: write
@@ -16,7 +21,8 @@ jobs:
       - name: Start the packaging workflow on its test branch
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_WORKFLOW: package-release-advanced-installer.yml
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          BUILD_WORKFLOW: package-release-velopack.yml
         run: |
-          gh workflow run "$BUILD_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref codex/release-workflow-test
+          gh workflow run "$BUILD_WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref codex/release-workflow-test -f publish_release="$PUBLISH_RELEASE"
           echo "Build requested on codex/release-workflow-test. [View packaging runs](https://github.com/$GITHUB_REPOSITORY/actions/workflows/$BUILD_WORKFLOW?query=branch%3Acodex%2Frelease-workflow-test)." >> "$GITHUB_STEP_SUMMARY"
