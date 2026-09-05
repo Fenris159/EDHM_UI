@@ -19,7 +19,7 @@ VIAddVersionKey /LANG=1033 "ProductVersion" "${AppVersion}"
 
 Section
   ; Keep the source MSI for Windows Installer maintenance and rollback.
-  SetOutPath "$LOCALAPPDATA\Blue Mystic\EDHM-UI-V3\Installer\${AppVersion}"
+  SetOutPath "$LOCALAPPDATA\Blue Mystic\EDHM-UI-V3\Installer\${AppVersion}\${ProductCode}"
   ClearErrors
   File /oname=EDHM-UI-V3.msi "${SourceMsi}"
   ${If} ${Errors}

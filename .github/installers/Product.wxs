@@ -47,7 +47,8 @@
       <ComponentRef Id="DesktopShortcut" />
       <ComponentRef Id="MenuShortcut" />
     </Feature>
-    <CustomAction Id="LaunchApp" FileRef="MainExecutable" ExeCommand="" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
+    <Binary Id="LaunchApplication" SourceFile="$(var.LauncherExe)" />
+    <CustomAction Id="LaunchApp" BinaryRef="LaunchApplication" ExeCommand="/app=&quot;[#MainExecutable]&quot;" Execute="immediate" Impersonate="yes" Return="ignore" />
     <UIRef Id="InstallerUI" />
   </Package>
 </Wix>

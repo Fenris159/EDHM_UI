@@ -59,6 +59,8 @@ jobs:
           APP_VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           ../.github/scripts/build-free-windows-installer.ps1 -Version $env:APP_VERSION -Wix ../.tools/wix/wix.exe -MakeNSIS "${env:ProgramFiles(x86)}/NSIS/makensis.exe"
+      - name: Test installer Finish launch
+        run: ../.github/scripts/test-installer-launch.ps1
       - name: Test install, upgrade, repair and uninstall
         run: ../.github/scripts/test-windows-installers.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

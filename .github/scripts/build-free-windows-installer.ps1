@@ -31,7 +31,9 @@ function Get-StableId([string]$Text) {
 }
 function Get-StableGuid([string]$Text) { return ([guid](Get-StableId $Text)).ToString().ToUpperInvariant() }
 function Escape-Xml([string]$Text) { return [Security.SecurityElement]::Escape($Text) }
-$productCode = Get-StableGuid "edhm-ui/free-msi/product/$Version"
+# Each package build must replace a previously installed package, even when only
+# installer behavior changed and the application version stays the same.
+$productCode = [guid]::NewGuid().ToString().ToUpperInvariant()
 $icon = Join-Path $appRoot 'src/images/Icon_v3_a0.ico'
 $fileXml = [Text.StringBuilder]::new()
 [void]$fileXml.AppendLine('<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"><Fragment><DirectoryRef Id="APPDIR">')
@@ -65,14 +67,17 @@ $generated = Join-Path $OutputDirectory 'Files.wxs'
 [IO.File]::WriteAllText($generated, $fileXml.ToString())
 $manifest | ConvertTo-Json -Depth 3 | Set-Content (Join-Path $OutputDirectory 'payload-manifest.json')
 $msi = Join-Path $OutputDirectory 'EDHM-UI-V3.msi'
+$launcher = Join-Path $OutputDirectory 'LaunchApplication.exe'
+& $MakeNSIS /V2 "/DAppVersion=$Version" "/DOutputExe=$launcher" (Join-Path $repoRoot '.github/installers/LaunchApplication.nsi')
+if ($LASTEXITCODE -ne 0) { throw "Launch helper build failed: $LASTEXITCODE" }
 $arguments = @('build', '-arch', 'x64', '-ext', 'WixToolset.UI.wixext',
-  '-d', "AppVersion=$Version", '-d', "ProductCode=$productCode", '-d', "UpgradeCode=$upgradeCode", '-d', "AppIcon=$icon",
+  '-d', "AppVersion=$Version", '-d', "ProductCode=$productCode", '-d', "UpgradeCode=$upgradeCode", '-d', "AppIcon=$icon", '-d', "LauncherExe=$launcher",
   (Join-Path $repoRoot '.github/installers/Product.wxs'), (Join-Path $repoRoot '.github/installers/InstallerUI.wxs'), $generated, '-o', $msi)
 & $Wix @arguments
 if ($LASTEXITCODE -ne 0) { throw "WiX build failed: $LASTEXITCODE" }
 if (-not $MsiOnly) {
   $exe = Join-Path $OutputDirectory 'edhm-ui-v3-windows-x64.exe'
-  & $MakeNSIS /V2 "/DAppVersion=$Version" "/DSourceMsi=$msi" "/DOutputExe=$exe" "/DAppIcon=$icon" (Join-Path $repoRoot '.github/installers/Bootstrapper.nsi')
+  & $MakeNSIS /V2 "/DAppVersion=$Version" "/DProductCode=$productCode" "/DSourceMsi=$msi" "/DOutputExe=$exe" "/DAppIcon=$icon" (Join-Path $repoRoot '.github/installers/Bootstrapper.nsi')
   if ($LASTEXITCODE -ne 0) { throw "NSIS build failed: $LASTEXITCODE" }
   $info = (Get-Item -LiteralPath $exe).VersionInfo
   if ($info.FileVersion -ne $Version -or $info.ProductVersion -ne $Version) {

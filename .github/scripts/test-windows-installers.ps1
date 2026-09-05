@@ -76,6 +76,19 @@ try {
   Assert-Installed $customDirectory
   Invoke-Setup msiexec.exe "/fa `"$msi`" /qn /norestart /l*v `"$testRoot/repair.log`""
   Assert-Installed $customDirectory
+  # Rebuilt installers for the same app version must replace the cached MSI.
+  $replacement = Join-Path $testRoot 'same-version-replacement.msi'
+  Copy-Item -LiteralPath $msi -Destination $replacement
+  $replacementCode = [guid]::NewGuid().ToString('B').ToUpperInvariant()
+  $database = $installer.OpenDatabase($replacement, 1)
+  $view = $database.OpenView("UPDATE ``Property`` SET ``Value``='$replacementCode' WHERE ``Property``='ProductCode'")
+  $view.Execute(); $view.Close()
+  [Runtime.InteropServices.Marshal]::FinalReleaseComObject($view) | Out-Null
+  $database.Commit()
+  [Runtime.InteropServices.Marshal]::FinalReleaseComObject($database) | Out-Null
+  Invoke-Setup msiexec.exe "/i `"$replacement`" /qn /norestart /l*v `"$testRoot/same-version-upgrade.log`""
+  Assert-Installed $customDirectory
+  if (@(Get-Products)[0] -ne $replacementCode) { throw 'Same-version upgrade retained the old installer' }
   Uninstall-Current 'upgrade-uninstall'
   if (Test-Path (Join-Path $customDirectory 'EDHM-UI-V3.exe')) { throw 'Uninstall left the executable' }
   if ((Get-Content (Join-Path $customDirectory 'my-user-file.txt') -Raw) -ne 'keep me') { throw 'Uninstall removed user-owned files' }
@@ -97,7 +110,7 @@ try {
     if (Test-Path (Join-Path $folder 'EDHM-UI-V3.lnk')) { throw 'A disabled shortcut was created or a previous shortcut was not removed' }
   }
   Uninstall-Current 'no-shortcuts-uninstall'
-  Write-Output 'PASS: upstream upgrade, rollback, downgrade rejection, payload hashes, repair, fresh install, shortcut options, uninstall, user-data preservation'
+  Write-Output 'PASS: upstream and same-version upgrade, rollback, downgrade rejection, payload hashes, repair, fresh install, shortcut options, uninstall, user-data preservation'
 } finally {
   Uninstall-Current 'cleanup'
 }

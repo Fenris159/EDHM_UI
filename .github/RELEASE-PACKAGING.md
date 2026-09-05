@@ -44,14 +44,14 @@ identity. New Vite hashes and shader ZIP names need no manual file-list edits.
 ### Free installer
 
 `build-free-windows-installer.ps1` generates one MSI component per packaged file,
-with stable component IDs and a product code derived from the app version. It reads
+with stable component IDs and a fresh product code for each build. It reads
 the upgrade code from the original `.aip`. The test artifact includes a SHA-256
 payload manifest for checking installed files.
 
 The NSIS EXE only carries and launches this MSI. Windows Installer handles
 elevation, repair, rollback, upgrades, downgrade rejection, and uninstallation.
 NSIS registers no second uninstaller. It retains the source MSI in
-`%LOCALAPPDATA%\Blue Mystic\EDHM-UI-V3\Installer\VERSION` for maintenance. That cache
+`%LOCALAPPDATA%\Blue Mystic\EDHM-UI-V3\Installer\VERSION\PRODUCT-CODE` for maintenance. That cache
 remains after uninstall; it contains no user settings.
 
 WiX **5.0.2** is intentionally pinned: WiX 6 and later introduced a maintenance fee
@@ -73,7 +73,7 @@ See [WiX version lifecycle](https://docs.firegiant.com/wix/) and
 | Shortcuts | Desktop and Start Menu, same names and targets, selectable on initial install |
 | User settings/files | No recursive cleanup; only installer-owned files/values removed |
 | Maintenance | Repair and uninstall; one Apps & Features entry |
-| Launch after installation | Completion checkbox; no launch in silent mode |
+| Launch after installation | Completion checkbox uses a small NSIS helper and Windows ShellExecuteEx, allowing the app's normal UAC prompt; no launch in silent mode |
 | Silent use | MSI arguments, e.g. `/qn /norestart`, `/l*v "log.txt"`, `APPDIR="path"` |
 | Installer UI | New MSI dialogs, not a pixel-identical copy of Advanced Installer |
 | Running application | Windows Installer Restart Manager handles files in use; upstream has its own stop-process action |
@@ -82,8 +82,10 @@ See [WiX version lifecycle](https://docs.firegiant.com/wix/) and
 The paths target the same installation outcome. They are **not identical in every
 behavior**, and a PR must not claim otherwise. A future Advanced Installer release
 upgrading a free installation still needs a live test with a licensed build.
-Same-version rebuilding is maintenance; increment the app version when publishing
-changed application files.
+Re-running the same EXE offers maintenance. A rebuilt EXE replaces an earlier
+package at the same app version so installer-only fixes reach the cached MSI;
+its separate cache folder preserves the previous package's source for rollback.
+Increment the app version when publishing changed application files.
 
 ## Linux
 
@@ -108,6 +110,14 @@ payload hashes, registered version, custom/default locations, downgrade rejectio
 rollback after a failed upgrade, repair, shortcut options, uninstall, and user-file
 preservation. Logs upload on failure.
 No Elite Dangerous installation is required or modified.
+
+The Finish action has a separate regression check: the actual compiled MSI action
+launches a harmless probe from a path with spaces and Unicode in the correct working
+directory. The test uses a temporary MSI copy with a unique product identity and
+runs no installation or uninstallation actions. Direct MSI EXE actions fail
+with Windows error 740 for EDHM-UI's elevation manifest; ShellExecuteEx lets Windows
+request consent normally. Cancelling consent does not undo the completed install.
+Hosted CI cannot validate the interactive Windows 11 secure-desktop UAC prompt.
 
 The initial fork test verified Linux ZIP integrity, executable permissions, settings
 renderer, and packaged app version. Live Linux installation remains untested.
