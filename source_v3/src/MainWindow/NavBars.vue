@@ -42,7 +42,7 @@
           <div class="input-group mb-3">
 
             <button id="cmdAddNewTheme" class="btn btn-outline-secondary" type="button" data-bs-toggle="tooltip"
-              data-bs-placement="bottom" data-bs-title="Add New Theme" @mousedown="addNewTheme_Click">
+              data-bs-placement="bottom" data-bs-title="Add New Theme" @click="addNewTheme_Click">
               <i class="bi bi-plus-circle"></i>
             </button>
             <button id="cmdEditTheme" class="btn btn-outline-secondary" type="button" data-bs-toggle="tooltip"
@@ -198,6 +198,27 @@
       </div>
     </nav> <!-- Bottom Navbar -->
 
+    <!-- Immediate dismissal keeps rapid confirmation clicks out of Bootstrap's opening transition. -->
+    <div id="NewThemeModal" class="modal" tabindex="-1" aria-labelledby="NewThemeModalLabel"
+      aria-describedby="NewThemeModalDescription" aria-hidden="true" data-bs-theme="dark">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-light">
+          <div class="modal-header">
+            <h5 id="NewThemeModalLabel" class="modal-title">Create New Theme?</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div id="NewThemeModalDescription" class="modal-body">
+            This will take your currently applied settings to build a new theme.
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">No, take me back</button>
+            <button id="confirmNewTheme" type="button" class="btn btn-primary" @click="confirmNewTheme">Yes, I am sure</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="SaveThemeCopyModal" class="modal fade" tabindex="-1" aria-labelledby="SaveThemeCopyModalLabel"
       aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
@@ -283,6 +304,7 @@ export default {
       saveCopyThemeName: '',
       saveCopyError: '',
       saveCopyModal: null,
+      newThemeModal: null,
 
       searchResults: [],
       globalSettings: [],
@@ -430,8 +452,8 @@ export default {
 
         this.programSettings = settings;
         this.appVersion = await window.api.getAppVersion();
-        this.modVersion = settings.Version_ODYSS;
         this.ActiveInstance = await window.api.getActiveInstance();
+        this.modVersion = this.getModVersion();
         this.selectedGame = this.ActiveInstance.instance;
         const initialEDHMStatus = await this.RefreshEDHMStatus(this.ActiveInstance);
         this.ShowInitialEDHMStatusToast(initialEDHMStatus);
@@ -631,7 +653,7 @@ export default {
           EventBus.emit('RoastMe', {
             type: 'Warning',
             title: 'EDHM Installation Needs Attention',
-            message: `<b>Theme: '${template.credits.theme}' Applied!</b><br>` +
+            message: `<b>Theme '${template.credits.theme}' saved.</b><br>` +
               'One or more required EDHM DLL files are missing or duplicated, so the game may not load this theme. ' +
               'Reinstall EDHM or correct the DLL filenames before your next game launch.',
           });
@@ -639,14 +661,15 @@ export default {
           EventBus.emit('RoastMe', {
             type: 'Warning',
             title: 'EDHM Disabled',
-            message: `<b>Theme: '${template.credits.theme}' Applied!</b><br>` +
+            message: `<b>Theme '${template.credits.theme}' saved.</b><br>` +
               'EDHM is currently disabled, so the game cannot load this theme. ' +
               'Enable EDHM before your next game launch to see the changes.',
           });
         } else {
           EventBus.emit('RoastMe', {
             type: 'Success',
-            message: `<b>Theme: '${template.credits.theme}' Applied!`,
+            message: `<b>Theme '${template.credits.theme}' saved; reload requested.</b><br>` +
+              'Allow a few seconds for the game to update.',
           });
         }
         return true;
@@ -681,7 +704,7 @@ export default {
         if (this.ActiveInstance.path != '') {
           const themePath = await window.api.joinPath(this.ActiveInstance.path, 'EDHM-ini');
           let _ret = await window.api.GetCurrentSettings(themePath);
-          _ret.version = this.programSettings.Version_ODYSS; //<- Load version from EDHM  
+          _ret.version = this.getModVersion();
           //console.log('Current Settings:', _ret);
           return _ret;
         }
@@ -747,19 +770,19 @@ export default {
       }
     },
     async addNewTheme_Click(event) {
-      const options = {
-        type: 'question', //<- none, info, error, question, warning
-        buttons: ['Cancel', 'Yes, I am sure', 'No, take me back'],
-        defaultId: 1,
-        title: 'Question',
-        message: 'Create New Theme?',
-        detail: 'This will take your currently applied settings to build a new theme',
-        cancelId: 0
-      };
-      const result = await window.api.ShowMessageBox(options); //console.log(result);
-      if (result && result.response === 1) {
+      const modalElement = document.getElementById('NewThemeModal');
+      this.newThemeModal = bootstrap.Modal.getOrCreateInstance(modalElement, { keyboard: true });
+      this.newThemeModal.show();
+    },
+    confirmNewTheme() {
+      if (!this.newThemeModal) return;
+      const modal = this.newThemeModal;
+      this.newThemeModal = null;
+      // Finish dismissing the confirmation before opening the image editor.
+      document.getElementById('NewThemeModal').addEventListener('hidden.bs.modal', () => {
         EventBus.emit('OnCreateTheme', { theme: null }); //<- Event Listened on App.vue
-      }
+      }, { once: true });
+      modal.hide();
     },
     async editTheme_Click(event) {
       if (this.themeTemplate && !isEmpty(this.themeTemplate)) {
@@ -1132,11 +1155,16 @@ export default {
       //  -> showHideSpinner({ visible: true });
     },
 
+    getModVersion() {
+      return this.ActiveInstance.key === 'ED_Horizons'
+        ? this.programSettings.Version_HORIZ
+        : this.programSettings.Version_ODYSS;
+    },
     OnModUpdated(data) {
       // happens when the mod gets updated
       this.programSettings = data;
       //console.log('programSettings: ', programSettings);
-      this.modVersion = data.Version_ODYSS;
+      this.modVersion = this.getModVersion();
       this.RefreshEDHMStatus();
     },
     OnXmlChanged(data) {
@@ -1157,6 +1185,7 @@ export default {
           theme.path = GamePath;
           const saved = await window.api.SaveTheme(theme);
           console.log('Current Settings Saved?: ', saved);
+          if (saved) EventBus.emit('CurretSettingsUpdated');
         }
       }
     },

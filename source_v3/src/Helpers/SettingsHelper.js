@@ -10,6 +10,8 @@ import themeHelper from './ThemeHelper.js';
 import INIparser from './IniParser.js';
 import Log from './LoggingHelper.js';
 import Util from './Utils.js';
+import { getModBundle } from './ModBundle.js';
+import { themeReloadSignal } from './ThemeReloadSignal.js';
 
 /*----------------------------------------------------------------------------------------------------------------------------*/
 let programSettings = null; // Holds the Program Settings in memory
@@ -27,6 +29,16 @@ let installationStatus = InstallationStatus.EXISTING_INSTALL; // Default status
 /*----------------------------------------------------------------------------------------------------------------------------*/
 
 // #region Program Settings
+
+function withBundledVersions(settings) {
+  // Version fields describe this app's bundled mod, not an older settings file.
+  for (const gameType of ['ODYSS', 'HORIZ']) {
+    settings[`Version_${gameType}`] = getModBundle(
+      fileHelper.getAssetPath(`data/${gameType}`), gameType
+    ).version;
+  }
+  return settings;
+}
 
 /** * Check if the Settings JSON exists, if it does not, creates a default file and returns 'false'
  */
@@ -69,7 +81,7 @@ export const initializeSettings = async () => {
 
     // Load default settings from file
     const defaultSettings = fs.readFileSync(defaultSettingsPath, 'utf8');
-    programSettings = JSON.parse(defaultSettings);
+    programSettings = withBundledVersions(JSON.parse(defaultSettings));
 
     // Set the user data folder path in the settings
     programSettings.UserDataFolder = userSettingsDir;
@@ -84,7 +96,7 @@ export const initializeSettings = async () => {
   } else {
     // Existing settings found — load them
     installationStatus = InstallationStatus.EXISTING_INSTALL;
-    programSettings = JSON.parse(fs.readFileSync(programSettingsPath, 'utf-8'));
+    programSettings = withBundledVersions(JSON.parse(fs.readFileSync(programSettingsPath, 'utf-8')));
 
     // Ensure the user data folder path is set
     programSettings.UserDataFolder = userSettingsDir;
@@ -106,7 +118,9 @@ const loadSettings = () => {
   const data = fs.readFileSync(programSettingsPath, { encoding: "utf8", flag: 'r' });
   //flags: 'a' is append mode, 'w' is write mode, 'r' is read mode, 'r+' is read-write mode, 'a+' is append-read mode
 
-  programSettings = JSON.parse(data);
+  const loadedSettings = withBundledVersions(JSON.parse(data));
+  cancelReloadForInstanceChange(loadedSettings);
+  programSettings = loadedSettings;
   programSettings.UserDataFolder = path.dirname(programSettingsPath); // Get the directory path   
   return programSettings;
 };
@@ -115,16 +129,25 @@ const loadSettings = () => {
  * @param {*} settings must 'JSON.stringify' the object before sending it here  */
 async function saveSettings(settings) {
   //console.log(settings);
-  await writeFile(programSettingsPath, settings, { encoding: "utf8", flag: 'w' });
+  const updatedSettings = withBundledVersions(JSON.parse(settings));
+  cancelReloadForInstanceChange(updatedSettings);
+  await writeFile(programSettingsPath, JSON.stringify(updatedSettings, null, 4), { encoding: "utf8", flag: 'w' });
 
   //fs.writeFileSync(path, data, { encoding: "utf8", flag: 'a+' }); 
   //flags: 'a' is append mode, 'w' is write mode, 'r' is read mode, 'r+' is read-write mode, 'a+' is append-read mode
 
-  programSettings = JSON.parse(settings); //<- Updates the Settings
+  programSettings = updatedSettings; //<- Updates the Settings
   console.log('Settings Saved Successfully');
 
   return programSettings;
 };
+
+function cancelReloadForInstanceChange(settings) {
+  if (programSettings?.ActiveInstance !== settings.ActiveInstance ||
+      JSON.stringify(programSettings?.GameInstances) !== JSON.stringify(settings.GameInstances)) {
+    themeReloadSignal.cancel();
+  }
+}
 
 /** Returns the value of a setting from the settings JSON file. 
  * @param {*} key Name of a Key in the Settings
@@ -154,7 +177,11 @@ function writeSetting(key, value) {
     const data = fs.readFileSync(programSettingsPath, 'utf8');
     const settings = JSON.parse(data);
     settings[key] = value;
+    withBundledVersions(settings);
+    cancelReloadForInstanceChange(settings);
     fs.writeFileSync(programSettingsPath, JSON.stringify(settings, null, 4), 'utf8');
+    programSettings = settings;
+    programSettings.UserDataFolder = path.dirname(programSettingsPath);
     return true; // Indicate success
   } catch (error) {
     console.error('Error writing setting:', error);
@@ -522,14 +549,11 @@ async function installEDHMmod(gameInstance) {
 
   // #region Un-Zipping Mod Files
 
-  const edhmZipFile = await fileHelper.findFileWithPattern(AssetsPath, `${GameType}_EDHM-v*.zip`); //<- ODYSS_EDHM-v19.06.zip
-  if (!edhmZipFile) {
-    throw new Error('404 - Zip File Not Found');
-  }
+  const bundle = getModBundle(AssetsPath, GameType);
+  const edhmZipFile = bundle.filePath;
 
   console.log('Unzipping Mod Files from: ', edhmZipFile);
   const unzipGamePath = gamePath;
-  const versionMatch = edhmZipFile.match(/v\d+\.\d+/); 
 
   _ret = await fileHelper.decompressFile(edhmZipFile, unzipGamePath);
 
@@ -548,7 +572,7 @@ async function installEDHMmod(gameInstance) {
   }
 
   Response.game = GameType;
-  Response.version = versionMatch[0];
+  Response.version = bundle.version;
 
   // #endregion
 
@@ -1111,7 +1135,7 @@ ipcMain.handle('getDefaultSettings', () => {
   try {
     // Read the default settings JSON file
     const defaultSettings = fs.readFileSync(defaultSettingsPath, 'utf8');
-    return JSON.parse(defaultSettings);
+    return withBundledVersions(JSON.parse(defaultSettings));
   } catch (error) {
     throw new Error(error.message + error.stack);
   }
