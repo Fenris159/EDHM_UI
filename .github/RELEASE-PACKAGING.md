@@ -80,8 +80,8 @@ EDHM version, upstream commit, and upstream archive blob. The UI ZIP is repackag
 so its bytes need not equal the upstream ZIP; version matching does not claim a
 byte-for-byte payload comparison.
 
-After both platform jobs succeed, a job with `contents: write` publishes a stable
-release titled and tagged `vAPP_VERSION`, marked Latest, with exactly three assets:
+When publication is selected and both platform jobs succeed, a job with
+`contents: write` publishes a stable release titled and tagged `vAPP_VERSION`, marked Latest, with exactly three assets:
 `edhm-ui-v3-windows-x64.exe`, `edhm-ui-v3-linux-x64.zip`, and `linux_installer.sh`.
 Notes are the release body; the notes and metadata files remain in Actions artifacts
 and are not attached to the public release. GitHub automatically adds Source code
@@ -181,10 +181,15 @@ name expected by the existing shell script.
 
 ## Validation
 
-[Fork run 33993776371](https://github.com/Fenris159/EDHM_UI/actions/runs/33993776371)
-passed all 31 application tests and the full installer lifecycle checks below.
-Velopack has its own hosted-runner test for full payload hashes, the actual Electron
-startup hook, registration, shortcuts, repeated installation, and uninstallation.
+[Free installer run 33999949926](https://github.com/Fenris159/EDHM_UI/actions/runs/33999949926)
+passed all 34 application tests, 11 release tests, both platform builds, and the full
+MSI lifecycle checks below with the Velopack SDK included in the app.
+[Velopack run 34000377594](https://github.com/Fenris159/EDHM_UI/actions/runs/34000377594)
+passed those application/release tests, both platform builds, full installed payload
+hashes, the real Electron installer hook, registration, shortcuts, repeated installation,
+and uninstallation. The hook test also verifies no application settings are created.
+[Manual launcher run 34000177845](https://github.com/Fenris159/EDHM_UI/actions/runs/34000177845)
+verified dispatch from the fork's default branch with publication disabled.
 This does not replace a live upgrade test using the maintainer's existing Velopack installer.
 
 The Windows job runs application regression tests and real installer tests on a
@@ -203,6 +208,11 @@ runs no installation or uninstallation actions. Direct MSI EXE actions fail
 with Windows error 740 for EDHM-UI's elevation manifest; ShellExecuteEx lets Windows
 request consent normally. Cancelling consent does not undo the completed install.
 Hosted CI cannot validate the interactive Windows 11 secure-desktop UAC prompt.
+The app retains its `highestAvailable` manifest. Velopack's fast hooks use CreateProcess,
+whereas normal launch uses ShellExecute; its hosted-runner tests run with administrator
+privileges. Before upstream publication, explicitly test installation, hook handling,
+and final launch from an unelevated Windows 11 session: the elevated CI result does
+not prove that path or exclude an elevation-required hook warning.
 
 The initial fork test verified Linux ZIP integrity, executable permissions, settings
 renderer, and packaged app version. Live Linux installation remains untested.
