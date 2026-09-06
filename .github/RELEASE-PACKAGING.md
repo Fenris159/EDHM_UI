@@ -25,8 +25,10 @@ The experiment remains in the fork, separate from the EDHM v22.02 application PR
    It publishes a normal stable GitHub release, with installers, patch notes, and
    GitHub's automatic source archives. Existing published versions cannot be replaced.
 
-`source_v3/package.json` pins the Velopack SDK. CI installs the same CLI version from
-that field; update the npm dependency and lockfiles together when changing versions.
+`.github/installers/velopack/sdk.json` pins the native Velopack SDK version and the
+SHA-256 of its official release archive. CI installs that same CLI version. Update
+both fields together when changing Velopack versions; the app version still comes
+automatically from `source_v3/package.json`.
 Authors, display name, app version, icon, and executable are read from existing app
 metadata or set in `build-velopack-installer.ps1`. The workflow YAML exposes the package
 ID variable and publish toggle; no developer has to edit version strings each release.
@@ -102,11 +104,30 @@ the fork while this workflow is tested for upstream adoption.
 ### Velopack
 
 `build-velopack-installer.ps1` packages the Forge output and copies its Setup EXE to
-`edhm-ui-v3-windows-x64.exe`, preserving the updater's download name. The early main
-process hook runs before Electron imports, settings access, or the single-instance
-lock. The native SDK is externalized from Vite and unpacked from ASAR. Desktop shortcut
+`edhm-ui-v3-windows-x64.exe`, preserving the updater's download name. Desktop shortcut
 creation and hotfix paths follow the running executable, including Velopack's `current`
 subdirectory. Existing user settings locations are unchanged.
+
+`build-velopack-launcher.ps1` builds a small native **asInvoker** entry point,
+`EDHM-UI-V3.Launcher.exe`, with Velopack's official C++ SDK. `vpk --mainExe` points
+to this launcher. Install, update, obsolete-version, and uninstall hooks run there
+and exit before starting Electron or accessing application settings. This avoids
+error 740 without elevating the per-user installer or changing its installation
+scope, package ID, folder, or registry ownership.
+
+For ordinary launches, the launcher calls Windows ShellExecuteEx with the `open`
+verb and the original arguments and working directory. The existing `EDHM-UI-V3.exe`
+keeps its **highestAvailable** manifest: administrators receive the normal consent
+prompt; standard users retain the original non-elevated behavior. Cancelling UAC
+closes the launcher without retrying or undoing installation. Other launch errors
+are reported. The launcher does not force alternate administrator credentials.
+
+The main app executable and its resources keep their names and locations. Only the
+launcher and `velopack_libc.dll` are added to the Velopack payload. The free installer
+and Linux build do not need this launcher or a JavaScript Velopack dependency.
+The native launcher uses MSVC/CMake already available on the hosted Windows runner;
+its runtime is linked statically and the SDK DLL depends only on Windows libraries.
+For local packaging, install Visual Studio C++ build tools with CMake.
 
 The application still checks GitHub releases and downloads the **full installer**.
 This work does not switch it to Velopack's UpdateManager or delta updates. Consequently,
@@ -123,7 +144,7 @@ current Velopack package ID and any local migration customizations are still nee
 before claiming compatibility with their existing users.
 
 Official references: [GitHub Actions](https://docs.velopack.io/distributing/github-actions),
-[Electron/Vite integration](https://docs.velopack.io/getting-started/javascript),
+[C++ SDK integration](https://docs.velopack.io/getting-started/cpp),
 [Setup options](https://docs.velopack.io/reference/cli/content/setup-windows).
 
 ### Free installer
@@ -208,11 +229,15 @@ runs no installation or uninstallation actions. Direct MSI EXE actions fail
 with Windows error 740 for EDHM-UI's elevation manifest; ShellExecuteEx lets Windows
 request consent normally. Cancelling consent does not undo the completed install.
 Hosted CI cannot validate the interactive Windows 11 secure-desktop UAC prompt.
-The app retains its `highestAvailable` manifest. Velopack's fast hooks use CreateProcess,
-whereas normal launch uses ShellExecute; its hosted-runner tests run with administrator
-privileges. Before upstream publication, explicitly test installation, hook handling,
-and final launch from an unelevated Windows 11 session: the elevated CI result does
-not prove that path or exclude an elevation-required hook warning.
+The original direct Electron hook was reproduced locally in a non-elevated Windows
+session: CreateProcess returned error 740 before the SDK could run. The new native
+entry point passes all four real SDK hooks in that same non-elevated session.
+`test-velopack-hooks.ps1` provides that repeatable check without installing anything.
+Native tests also verify ShellExecute parameters, argument/path preservation, error
+propagation, and cancellation without retry. The two old JavaScript bootstrap tests
+were replaced by these native checks; the remaining 32 application tests pass.
+An interactive Windows 11 consent/cancel test is still needed to verify the visible
+secure-desktop experience, alongside upgrading the maintainer's previous installer.
 
 The initial fork test verified Linux ZIP integrity, executable permissions, settings
 renderer, and packaged app version. Live Linux installation remains untested.

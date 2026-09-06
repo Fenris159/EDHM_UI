@@ -82,9 +82,9 @@ jobs:
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '8.0.x'
-      - name: Install the CLI version matching the app SDK
+      - name: Install the CLI version matching the launcher SDK
         run: |
-          $sdkVersion = (Get-Content package.json -Raw | ConvertFrom-Json).dependencies.velopack
+          $sdkVersion = (Get-Content ../.github/installers/velopack/sdk.json -Raw | ConvertFrom-Json).version
           dotnet tool install --global vpk --version $sdkVersion
           if ($LASTEXITCODE -ne 0) { throw 'Could not install vpk' }
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

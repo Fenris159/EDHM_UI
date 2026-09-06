@@ -7,12 +7,7 @@ const name = process.platform === 'win32' ? 'EDHM-UI-V3-win32-x64' : 'edhm-ui-v3
 const archive = path.join(appRoot, 'out', name, 'resources/app.asar');
 const pkg = JSON.parse(asar.extractFile(archive, 'package.json'));
 const main = asar.extractFile(archive, path.normalize(pkg.main)).toString();
-assert.ok(main.indexOf('VelopackApp.build().run()') >= 0, 'Missing installer bootstrap');
-assert.ok(main.indexOf('VelopackApp.build().run()') < main.indexOf('require("electron")'), 'Installer hook must precede Electron imports');
-for (const dependency of Object.keys(pkg.dependencies)) {
-  assert.ok(asar.statFile(archive, path.join('node_modules', dependency, 'package.json')), `Missing external dependency: ${dependency}`);
-}
-if (process.platform === 'win32') {
-  assert.ok(fs.existsSync(`${archive}.unpacked/node_modules/velopack/lib/native/velopack_nodeffi_win_x64_msvc.node`), 'Native SDK must be unpacked');
-}
-console.log(`Packaged ${name} includes its bootstrap and all external dependencies.`);
+assert.ok(main.includes('require("electron")'), 'Missing Electron entry point');
+assert.equal(pkg.version, JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'))).version);
+assert.ok(fs.existsSync(path.join(path.dirname(archive), 'settings_window/settings.html')), 'Missing settings renderer');
+console.log(`Packaged ${name} includes the main/settings entry points and matching app version.`);

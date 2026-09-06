@@ -12,11 +12,7 @@ function safeInclude(n) { return fs.existsSync(n) ? n : null }
 /* ---  FOR WINDOWS --- */
 module.exports = {
   packagerConfig: {
-    asar: { unpack: '**/*.node' },
-    // Vite normally excludes node_modules. External dependencies (including the
-    // native Velopack SDK) must be shipped; Packager prunes devDependencies.
-    ignore: (file) => file !== '' && file !== '/package.json' &&
-      !/^\/(?:\.vite|node_modules)(?:\/|$)/.test(file),
+    asar: true,
     extraResource: [
       'src/data',
       'src/images',

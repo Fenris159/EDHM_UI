@@ -32,21 +32,19 @@ $installer = Join-Path $appRoot 'out/release/edhm-ui-v3-windows-x64.exe'
 Run-Checked $installer "--silent --installto `"$installDir`" --log `"$testRoot/install.log`""
 Check-Payload
 if (Test-Path -LiteralPath $settingsPath) { throw 'Silent installation started the application and created settings' }
-# Verify the real packaged Electron/native SDK bootstrap exits before app startup.
-$stdout = Join-Path $testRoot 'hook.stdout.txt'
-$stderr = Join-Path $testRoot 'hook.stderr.txt'
-$process = Start-Process -FilePath (Join-Path $installDir 'current/EDHM-UI-V3.exe') `
-    -ArgumentList "--veloapp-install $($buildInfo.appVersion)" -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
-if (-not $process.WaitForExit(30000)) { $process.Kill(); throw 'Velopack bootstrap did not exit before normal app startup' }
-if ($process.ExitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($stdout)) -or
-    -not [string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($stderr)) -or (Test-Path -LiteralPath $settingsPath)) {
-    throw "Velopack installer hook did not exit cleanly before app startup (exit $($process.ExitCode)); see $testRoot"
-}
+# Exercise all four hooks through the real installed, non-elevating entry point.
+& (Join-Path $PSScriptRoot 'test-velopack-hooks.ps1') `
+    -Executable (Join-Path $installDir 'current/EDHM-UI-V3.Launcher.exe') -Version $buildInfo.appVersion
+if (Test-Path -LiteralPath $settingsPath) { throw 'Installer hook started Electron and created settings' }
 $registration = Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($buildInfo.packageId)"
 if ($registration.DisplayVersion -ne $buildInfo.appVersion) { throw 'Incorrect registered app version' }
 foreach ($folder in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {
     $shortcutPath = Join-Path $folder 'EDHM-UI-V3.lnk'
     if (-not (Test-Path -LiteralPath $shortcutPath)) { throw "Missing shortcut: $shortcutPath" }
+    $shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcutPath)
+    if ([IO.Path]::GetFileName($shortcut.TargetPath) -ne 'EDHM-UI-V3.Launcher.exe') {
+        throw 'Velopack shortcut bypasses the non-elevating launcher'
+    }
 }
 # Full-installer updates remain the app's update mechanism; exercise a repeated install.
 Run-Checked $installer "--silent --installto `"$installDir`" --log `"$testRoot/reinstall.log`""

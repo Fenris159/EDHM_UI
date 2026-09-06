@@ -425,11 +425,6 @@
   dependencies:
     cross-spawn "^7.0.1"
 
-"@neon-rs/load@^0.2.0":
-  version "0.2.6"
-  resolved "https://registry.npmjs.org/@neon-rs/load/-/load-0.2.6.tgz"
-  integrity sha512-7p8j+guEhGTJNJISgmHO0homqGYAc0SDfmgGZfluMcQnimcceMY87b4hdqufp+7YmsOVC4W/JvT3/Tpi3/gy+Q==
-
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
   resolved "https://registry.npmjs.org/@nodelib/fs.scandir/-/fs.scandir-2.1.5.tgz"
@@ -3226,13 +3221,6 @@ vary@~1.1.2:
   version "1.1.2"
   resolved "https://registry.npmjs.org/vary/-/vary-1.1.2.tgz"
   integrity sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==
-
-velopack@1.2.0:
-  version "1.2.0"
-  resolved "https://registry.npmjs.org/velopack/-/velopack-1.2.0.tgz"
-  integrity sha512-rWX8G9h5gv2AgrjiADhvyrrv7LpCCcFeepw+jBx80/jm1FIXW7BgmSEQtJVXt3jqC2YnCKiBD6E1i/DBWnpIyw==
-  dependencies:
-    "@neon-rs/load" "^0.2.0"
 
 "vite@^5.0.0 || ^6.0.0", vite@^5.0.12:
   version "5.4.19"
