@@ -202,13 +202,15 @@ name expected by the existing shell script.
 
 ## Validation
 
-[Free installer run 33999949926](https://github.com/Fenris159/EDHM_UI/actions/runs/33999949926)
-passed all 34 application tests, 11 release tests, both platform builds, and the full
-MSI lifecycle checks below with the Velopack SDK included in the app.
-[Velopack run 34000377594](https://github.com/Fenris159/EDHM_UI/actions/runs/34000377594)
-passed those application/release tests, both platform builds, full installed payload
-hashes, the real Electron installer hook, registration, shortcuts, repeated installation,
-and uninstallation. The hook test also verifies no application settings are created.
+[Free installer run 34001691787](https://github.com/Fenris159/EDHM_UI/actions/runs/34001691787)
+passed all 32 application tests, 11 release tests, both platform builds, and the full
+MSI lifecycle checks below.
+[Velopack run 34001691802](https://github.com/Fenris159/EDHM_UI/actions/runs/34001691802)
+passed those application/release tests, both platform builds, the native launcher
+tests, all four real SDK hooks, full installed payload hashes, registration, shortcut
+targets, repeated installation, and uninstallation. Hook tests also verify that no
+application settings are created. The same four hooks passed locally without elevation,
+where the original direct Electron hook failed with Windows error 740.
 [Manual launcher run 34000177845](https://github.com/Fenris159/EDHM_UI/actions/runs/34000177845)
 verified dispatch from the fork's default branch with publication disabled.
 This does not replace a live upgrade test using the maintainer's existing Velopack installer.
