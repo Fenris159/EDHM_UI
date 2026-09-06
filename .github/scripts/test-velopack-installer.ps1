@@ -8,6 +8,8 @@ $buildInfo = Get-Content (Join-Path $appRoot 'out/release/velopack/build-info.js
 $testRoot = Join-Path $env:RUNNER_TEMP 'Velopack lifecycle Ω'
 $installDir = Join-Path $testRoot 'App'
 if (Test-Path -LiteralPath $testRoot) { throw 'Expected a fresh test directory' }
+$settingsPath = Join-Path $env:USERPROFILE 'EDHM_UI/Settings.json'
+if (Test-Path -LiteralPath $settingsPath) { throw 'Expected a runner without application settings' }
 New-Item -ItemType Directory -Path $testRoot | Out-Null
 function Run-Checked([string]$File, [string]$Arguments) {
     $process = Start-Process -FilePath $File -ArgumentList $Arguments -WindowStyle Hidden -PassThru
@@ -29,14 +31,16 @@ function Check-Payload {
 $installer = Join-Path $appRoot 'out/release/edhm-ui-v3-windows-x64.exe'
 Run-Checked $installer "--silent --installto `"$installDir`" --log `"$testRoot/install.log`""
 Check-Payload
+if (Test-Path -LiteralPath $settingsPath) { throw 'Silent installation started the application and created settings' }
 # Verify the real packaged Electron/native SDK bootstrap exits before app startup.
 $stdout = Join-Path $testRoot 'hook.stdout.txt'
 $stderr = Join-Path $testRoot 'hook.stderr.txt'
 $process = Start-Process -FilePath (Join-Path $installDir 'current/EDHM-UI-V3.exe') `
-    -ArgumentList '--veloapp-version' -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    -ArgumentList "--veloapp-install $($buildInfo.appVersion)" -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 if (-not $process.WaitForExit(30000)) { $process.Kill(); throw 'Velopack bootstrap did not exit before normal app startup' }
-if ($process.ExitCode -ne 0 -or (Get-Content -LiteralPath $stdout -Raw).Trim() -ne $buildInfo.sdkVersion) {
-    throw "Velopack bootstrap did not return the expected SDK version; see $testRoot"
+if ($process.ExitCode -ne 0 -or (Get-Item -LiteralPath $stdout).Length -ne 0 -or
+    (Get-Item -LiteralPath $stderr).Length -ne 0 -or (Test-Path -LiteralPath $settingsPath)) {
+    throw "Velopack installer hook did not exit cleanly before app startup; see $testRoot"
 }
 $registration = Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($buildInfo.packageId)"
 if ($registration.DisplayVersion -ne $buildInfo.appVersion) { throw 'Incorrect registered app version' }
@@ -47,6 +51,7 @@ foreach ($folder in @([Environment]::GetFolderPath('Desktop'), [Environment]::Ge
 # Full-installer updates remain the app's update mechanism; exercise a repeated install.
 Run-Checked $installer "--silent --installto `"$installDir`" --log `"$testRoot/reinstall.log`""
 Check-Payload
+if (Test-Path -LiteralPath $settingsPath) { throw 'Silent reinstallation started the application' }
 Run-Checked (Join-Path $installDir 'Update.exe') "uninstall --silent --log `"$testRoot/uninstall.log`""
 if (Test-Path -LiteralPath (Join-Path $installDir 'current/EDHM-UI-V3.exe')) { throw 'Uninstall left the application executable' }
 if (Test-Path -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($buildInfo.packageId)") {
