@@ -38,9 +38,9 @@ $stderr = Join-Path $testRoot 'hook.stderr.txt'
 $process = Start-Process -FilePath (Join-Path $installDir 'current/EDHM-UI-V3.exe') `
     -ArgumentList "--veloapp-install $($buildInfo.appVersion)" -WindowStyle Hidden -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
 if (-not $process.WaitForExit(30000)) { $process.Kill(); throw 'Velopack bootstrap did not exit before normal app startup' }
-if ($process.ExitCode -ne 0 -or (Get-Item -LiteralPath $stdout).Length -ne 0 -or
-    (Get-Item -LiteralPath $stderr).Length -ne 0 -or (Test-Path -LiteralPath $settingsPath)) {
-    throw "Velopack installer hook did not exit cleanly before app startup; see $testRoot"
+if ($process.ExitCode -ne 0 -or -not [string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($stdout)) -or
+    -not [string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($stderr)) -or (Test-Path -LiteralPath $settingsPath)) {
+    throw "Velopack installer hook did not exit cleanly before app startup (exit $($process.ExitCode)); see $testRoot"
 }
 $registration = Get-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($buildInfo.packageId)"
 if ($registration.DisplayVersion -ne $buildInfo.appVersion) { throw 'Incorrect registered app version' }
